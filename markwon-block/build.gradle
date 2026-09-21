@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.library'
+}
+apply from: rootProject.file('gradle/maven-publish.gradle')
+
+android {
+    compileSdkVersion config['compile-sdk']
+    buildToolsVersion config['build-tools']
+
+    // 块渲染类使用 lambda / 接口静态方法，需 Java 8
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        encoding 'UTF-8'
+    }
+
+    defaultConfig {
+        minSdkVersion config['min-sdk']
+        targetSdkVersion config['target-sdk']
+        versionCode 1
+        versionName version
+    }
+}
+
+dependencies {
+    // 块渲染依赖 core（解析/渲染管线）与 ext-tables（表格）
+    api project(':markwon-core')
+    api project(':markwon-ext-tables')
+
+    deps.with {
+        implementation it['x-annotations']
+    }
+}

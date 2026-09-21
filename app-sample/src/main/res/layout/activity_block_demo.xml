@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    tools:context="io.noties.markwon.sample.MainActivity">
+    tools:context="io.noties.markwon.sample.BlockDemoActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,53 +15,40 @@
         android:paddingRight="12dp">
 
         <Button
-            android:id="@+id/button_image_case"
+            android:id="@+id/button_block_render"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/button_image_case" />
+            android:text="@string/button_block_render" />
 
         <Button
-            android:id="@+id/button_all_plugins"
+            android:id="@+id/button_block_stream"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/button_all_plugins" />
+            android:text="@string/button_block_stream" />
 
         <Button
-            android:id="@+id/button_sse_case"
+            android:id="@+id/button_block_theme"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/button_sse_case" />
+            android:text="@string/button_block_theme" />
 
     </LinearLayout>
 
-    <Button
-        android:id="@+id/button_block_demo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="12dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginRight="12dp"
-        android:text="@string/button_block_demo" />
-
     <ScrollView
-        android:id="@+id/scroll_view"
+        android:id="@+id/block_scroll_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true">
 
-        <TextView
-            android:id="@+id/text_view"
+        <!-- markwon-block 一键接入入口：整段 / 流式增量都由它消化 -->
+        <io.noties.markwon.block.view.MarkdownTextBlockView
+            android:id="@+id/block_view"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingExtra="4dp"
-            android:padding="16dp"
-            android:textColor="#DE000000"
-            android:textColorLink="#3F51B5"
-            android:textSize="15sp" />
+            android:layout_height="wrap_content" />
 
     </ScrollView>
 

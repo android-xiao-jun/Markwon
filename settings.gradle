@@ -37,7 +37,9 @@ include ':markwon-core',
         ':markwon-recycler',
         ':markwon-recycler-table',
         ':markwon-simple-ext',
-        ':markwon-syntax-highlight'
+        ':markwon-syntax-highlight',
+        ':markwon-ext-view',
+        ':markwon-block'
 
 //include ':app-sample'
 //include ':sample-utils:processor'

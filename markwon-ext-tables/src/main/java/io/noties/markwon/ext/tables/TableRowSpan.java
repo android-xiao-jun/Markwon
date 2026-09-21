@@ -190,28 +190,33 @@ public class TableRowSpan extends ReplacementSpan {
         // content uses the whole row height, so every row is the same height.
         final int contentBottom = rowHeight;
 
+        // @since 4.6.3 — the table's own width vs. what the user can actually see. When the
+        // content is wider the table scrolls, and everything pinned to the view (the card
+        // frame, the scrollbar) has to be laid out against `frameWidth`, not the content width.
+        final int frameWidth = viewportWidth > 0
+                ? Math.min(tableTotalWidth, viewportWidth)
+                : tableTotalWidth;
+        final boolean overflow = scrollEnabled && tableTotalWidth > frameWidth;
+
         // @since 4.6.3 — rounded outer corners, drawn directly (no clipping):
         // the first row rounds its top corners, the last row the bottom ones.
-        // Clipping was abandoned on purpose — a clip edge cuts the border
-        // lines at the corners and is never anti-aliased. Instead:
+        // Clipping was abandoned on purpose — a clip edge cuts the border lines at
+        // the corners and is never anti-aliased (and `clipPath` is not even
+        // available before API 18, while this library ships minSdk 16). Instead:
         //   background  → drawn as a rounded path (anti-aliased)
         //   top/bottom lines and edge columns → indented by the radius
         //   the corner arc itself → drawn as a stroked arc segment
-        // @since 4.6.3 — a table wider than the viewport cannot be rounded: its corners belong to
-        // the content and travel with it, while the table's outline is pinned to the view. The
-        // two would disagree — the row background (clipped to the viewport) would fill in the
-        // area outside the pinned arc, leaving a rounded line drawn across a square corner. So
-        // an overflowing table is drawn square; only a table that fits keeps its rounded corners.
         //
-        // Gated on scrollEnabled as well, so a table that cannot scroll (whose width is by
-        // definition constrained to the viewport) always keeps the rounded look regardless of
-        // any rounding difference between the measured and the clipped width.
-        final boolean overflow = scrollEnabled && tableTotalWidth > viewportWidth;
-
-        int radius = theme.tableCornerRadius();
+        // The radius is capped by the *visible* width, and the rounding follows the view rather
+        // than the content: the background below is laid out over `scrollX … scrollX +
+        // frameWidth`, i.e. exactly what is on screen, so the corners land on the card's edges.
+        // Everything of the content that falls outside the view is clipped away by the viewport
+        // clip like all the rest of it — which is what makes it safe to keep the rounding on a
+        // table that overflows.
+        final int radius = theme.tableCornerRadius();
         float corner = 0F;
-        if (!overflow && radius > 0 && rowHeight > 0 && tableTotalWidth > 0) {
-            corner = Math.min(radius, Math.min(tableTotalWidth, rowHeight) / 2F);
+        if (radius > 0 && rowHeight > 0 && frameWidth > 0) {
+            corner = Math.min(radius, Math.min(frameWidth, rowHeight) / 2F);
         }
         final boolean first = corner > 0F && rowIndex == 0;
         final boolean last = corner > 0F && rowCount > 0 && rowIndex == rowCount - 1;
@@ -231,7 +236,9 @@ public class TableRowSpan extends ReplacementSpan {
         else theme.applyTableEvenRowStyle(paint);
 
         if (paint.getColor() != 0) {
-            rect.set(0, 0, tableTotalWidth, rowHeight);
+            // the stripe covers the *visible* span of the row — identical to the full content
+            // width whenever the table fits, and otherwise the only part of it that is on screen
+            rect.set(scrollX, 0, scrollX + frameWidth, rowHeight);
             if (first || last) {
                 rectF.set(rect);
                 roundedRect(path, rectF, corner, first, first, last, last);
@@ -253,11 +260,22 @@ public class TableRowSpan extends ReplacementSpan {
         // The bottom line is drawn by the LAST row only — the row below
         // provides its own top line, drawing both doubles the thickness of
         // every inner separator.
-        final float topLineStart = first ? corner : 0F;
-        final float topLineEnd = first ? tableTotalWidth - corner : tableTotalWidth;
-        canvas.drawRect(topLineStart, 0F, topLineEnd, borderWidth, paint);
+        //
+        // The table's own top edge (first row) and bottom edge (last row) are handed to the card
+        // pass while the table overflows: the content's copies slide sideways with the content,
+        // so mid-drag they would cut straight across the corners of the pinned card.
+        // NB: these run the full CONTENT width (`tableTotalWidth`), not the visible one. They
+        // live in content coordinates and are translated by `-scrollX`, so truncating them to
+        // `frameWidth` leaves a gap as wide as the scroll offset on the right — the rows stop
+        // short of the card's right edge the moment the table is dragged. Only the card pass,
+        // which draws outside the translation, is laid out against `frameWidth`.
+        if (!(overflow && firstRow)) {
+            final float topLineStart = first ? corner : 0F;
+            final float topLineEnd = first ? tableTotalWidth - corner : tableTotalWidth;
+            canvas.drawRect(topLineStart, 0F, topLineEnd, borderWidth, paint);
+        }
 
-        if (lastRow) {
+        if (lastRow && !overflow) {
             final float bottomLineStart = last ? corner : 0F;
             final float bottomLineEnd = last ? tableTotalWidth - corner : tableTotalWidth;
             canvas.drawRect(bottomLineStart, rowHeight - borderWidth, bottomLineEnd, rowHeight, paint);
@@ -265,8 +283,12 @@ public class TableRowSpan extends ReplacementSpan {
 
         // corner arcs: stroked segments whose centerline radius is
         // (corner - borderWidth/2), so the stroke sits exactly on the inner
-        // side of the rounded background and joins the straight lines
-        if (first || last) {
+        // side of the rounded background and joins the straight lines.
+        //
+        // Only while the table fits: when it overflows the corners belong to the card pass, which
+        // pins an arc to the view's edge. The content's own arc would duplicate it at
+        // `scrollX == 0` and, a few pixels into a drag, leave a stray curve inside the corner.
+        if (!overflow && (first || last)) {
             final float bw2 = borderWidth / 2F;
             final float r = corner - bw2;
             final Paint.Style previousStyle = paint.getStyle();
@@ -340,12 +362,12 @@ public class TableRowSpan extends ReplacementSpan {
         // the middle of a drag it has no left or right border at all. Overlapping the content's
         // own border lines (at scrollX == 0 the two coincide exactly) is intended: the user sees
         // one frame either way.
-        final int frameWidth = viewportWidth > 0
-                ? Math.min(tableTotalWidth, viewportWidth)
-                : tableTotalWidth;
-
+        //
+        // The frame is rounded exactly like the content was before it overflowed — the corners
+        // are simply drawn on the view's edges instead of the content's.
         if (overflow) {
-            drawCard(canvas, p, x, top, rowHeight, frameWidth, borderWidth, firstRow, lastRow);
+            drawCard(canvas, p, x, top, rowHeight, frameWidth, borderWidth,
+                    corner, first, last, firstRow, lastRow);
         }
 
         // The scrollbar belongs to the card as well: it is pinned to the bottom edge of the
@@ -430,9 +452,10 @@ public class TableRowSpan extends ReplacementSpan {
      * in place while the content slides under it, so a scrolled table always keeps a border on
      * <em>both</em> sides.
      *
-     * <p>The frame is always square: an overflowing table is drawn without rounded corners (see
-     * {@code overflow} in {@link #draw}), because a corner belongs to the content and travels
-     * with it while the frame does not.
+     * <p>The corners are rounded with the same recipe the content pass used when the table still
+     * fitted: the arcs are stroked segments on the inner side of the (already rounded) row
+     * background, and the top/bottom lines and the two verticals are indented by the radius so
+     * they meet the arcs instead of sticking out of the shape.
      *
      * <p>Every row draws the two verticals (so the frame is continuous down the table); the top
      * line belongs to the first row, the bottom one to the last, exactly like the content's own
@@ -448,6 +471,9 @@ public class TableRowSpan extends ReplacementSpan {
             int rowHeight,
             int frameWidth,
             int borderWidth,
+            float corner,
+            boolean first,
+            boolean last,
             boolean firstRow,
             boolean lastRow) {
 
@@ -464,15 +490,51 @@ public class TableRowSpan extends ReplacementSpan {
         final float topEdge = top;
         final float bottomEdge = top + rowHeight;
 
-        canvas.drawRect(left, topEdge, left + borderWidth, bottomEdge, paint);
-        canvas.drawRect(right - borderWidth, topEdge, right, bottomEdge, paint);
+        // the verticals stop short of the corner arcs on a rounded first/last row
+        final float insetTop = first ? corner : 0F;
+        final float insetBottom = last ? corner : 0F;
+
+        canvas.drawRect(left, topEdge + insetTop, left + borderWidth, bottomEdge - insetBottom, paint);
+        canvas.drawRect(right - borderWidth, topEdge + insetTop, right, bottomEdge - insetBottom, paint);
 
         if (firstRow) {
-            canvas.drawRect(left, topEdge, right, topEdge + borderWidth, paint);
+            canvas.drawRect(
+                    first ? left + corner : left,
+                    topEdge,
+                    first ? right - corner : right,
+                    topEdge + borderWidth,
+                    paint);
         }
 
         if (lastRow) {
-            canvas.drawRect(left, bottomEdge - borderWidth, right, bottomEdge, paint);
+            canvas.drawRect(
+                    last ? left + corner : left,
+                    bottomEdge - borderWidth,
+                    last ? right - corner : right,
+                    bottomEdge,
+                    paint);
+        }
+
+        if (first || last) {
+            final float bw2 = borderWidth / 2F;
+            final float r = corner - bw2;
+            if (r > 0F) {
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(borderWidth);
+                if (first) {
+                    rectF.set(left + bw2, topEdge + bw2, left + r * 2F + bw2, topEdge + r * 2F + bw2);
+                    canvas.drawArc(rectF, 180F, 90F, false, paint);
+                    rectF.set(right - r * 2F - bw2, topEdge + bw2, right - bw2, topEdge + r * 2F + bw2);
+                    canvas.drawArc(rectF, 270F, 90F, false, paint);
+                }
+                if (last) {
+                    rectF.set(right - r * 2F - bw2, bottomEdge - r * 2F - bw2, right - bw2, bottomEdge - bw2);
+                    canvas.drawArc(rectF, 0F, 90F, false, paint);
+                    rectF.set(left + bw2, bottomEdge - r * 2F - bw2, left + r * 2F + bw2, bottomEdge - bw2);
+                    canvas.drawArc(rectF, 90F, 90F, false, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            }
         }
     }
 

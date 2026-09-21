@@ -1,0 +1,47 @@
+# markwon-block 块渲染演示
+
+本页使用 **MarkdownTextBlockView** 一键接入渲染，整段内容会被拆分为结构化 Block：
+
+- 普通文本 → 文本块（TextBlock）
+- ```fence 代码 → 代码块（CodeBlock，复制 + 行号 + 横向滚动）
+- 独立一行图片 → 图片块（ImageBlock，本库内置占位）
+- 其余样式（表格 / 列表 / 链接）在文本块内由 Markwon 渲染
+
+## 文本块示例
+
+支持 **加粗**、*斜体*、~~删除线~~、`行内代码` 与 [链接](https://github.com)。
+
+> 引用块也能正常渲染。
+
+### 有序列表
+
+1. 第一项
+2. 第二项
+3. 第三项
+
+### 表格
+
+| 列 A | 列 B |
+| ---- | ---- |
+| 1    | 2    |
+| 3    | 4    |
+
+## 代码块示例
+
+```java
+public class Hello {
+    public static void main(String[] args) {
+        System.out.println("hello markwon-block");
+    }
+}
+```
+
+## 独立图片块示例
+
+![示意图](https://example.com/placeholder.png)
+
+## 分隔线（文本块内渲染）
+
+---
+
+以上为整段渲染的完整效果；点击「流式演示」可观察逐 chunk 追加的打字机效果。

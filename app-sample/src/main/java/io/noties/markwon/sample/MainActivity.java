@@ -3,6 +3,7 @@ package io.noties.markwon.sample;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
@@ -108,6 +109,9 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.button_all_plugins).setOnClickListener(v -> show(R.raw.case_all_plugins));
         // 流式 SSE 案例：按 token 粒度逐块追加渲染，结束后校验与整段解析的结果是否一致
         findViewById(R.id.button_sse_case).setOnClickListener(v -> startSseCase(R.raw.case_3));
+        // markwon-block 模块演示：MarkdownTextBlockView 一键接入（整段 / 流式 / 明暗主题）
+        findViewById(R.id.button_block_demo)
+                .setOnClickListener(v -> startActivity(new Intent(this, BlockDemoActivity.class)));
 
         show(R.raw.case_image);
     }

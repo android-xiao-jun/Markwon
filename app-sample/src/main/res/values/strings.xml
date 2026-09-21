@@ -5,4 +5,11 @@
     <string name="button_image_case">图片案例</string>
     <string name="button_all_plugins">全插件案例</string>
     <string name="button_sse_case">流式SSE案例</string>
+
+    <string name="button_block_demo">块渲染Demo</string>
+    <string name="button_block_render">整段渲染</string>
+    <string name="button_block_stream">流式演示</string>
+    <string name="button_block_theme">深色</string>
+    <string name="button_block_theme_light">浅色</string>
+    <string name="button_block_theme_dark">深色</string>
 </resources>

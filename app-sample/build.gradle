@@ -68,4 +68,7 @@ dependencies {
     implementation project(':markwon-recycler-table')
     implementation project(':markwon-simple-ext')
     implementation project(':markwon-syntax-highlight')
+
+    // markwon-block：MarkdownTextBlockView 一键接入（整段 / 流式增量）
+    implementation project(':markwon-block')
 }
