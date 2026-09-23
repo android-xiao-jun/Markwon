@@ -47,6 +47,7 @@
         <!-- markwon-block 一键接入入口：整段 / 流式增量都由它消化 -->
         <io.noties.markwon.block.view.MarkdownTextBlockView
             android:id="@+id/block_view"
+            android:layout_margin="12dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 

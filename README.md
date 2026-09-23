@@ -11,7 +11,7 @@
 > 4. 修复`Table`展示异常，以及增加`Table`可以横向滚动（整块区域拖拽 + 与代码块同样式的底部滚动条，见 [3.7](#37-表格横向滚动拖拽--底部滚动条)）
 >
 > 5. **新增块级渲染模块 `markwon-block`** —— 把 Markdown 按 Block 拆成独立 View（文本 / 代码 / 图片 / 分隔线），
->    自带视图复用与流式打字机，是 SSE / LLM 场景的另一种渲染形态（见 [5.2](#52-chat-demoai-聊天案例markwon-block--appendmarkdown-落地演示)）
+>    自带视图复用与流式打字机，是 SSE / LLM 场景的另一种渲染形态（见 [5.2](#52-chat-demoai-聊天案例markwon-block-分块渲染--流式打字机)）
 
 ---
 
@@ -37,39 +37,15 @@
 | `markwon-recycler-table` | `recycler-table` | `MarkwonAdapter.Entry` | 把表格渲染成原生 `TableLayout` |
 | `markwon-editor` | `editor` | 编辑器视图 | Markdown 编辑（**不是插件**） |
 | `markwon-ext-view` | — | — | 空壳，暂无源码 |
-| `markwon-block` | `block` | `MarkdownTextBlockView` `MarkdownBlockAssembler` `MdTheme` `MarkdownConfig` `MarkwonFactory` `BlockViewFactory` | 块级渲染：Markdown 按 Block 拆成独立 View（文本/代码/图片/分隔线），视图树差分复用 + 流式打字机。依赖 core + ext-tables |
-| `app-sample` | — | `MainActivity` `DefaultTheme` | 案例工程，演示全部插件 |
+| `markwon-block` | `block` | `MarkdownTextBlockView` `MarkdownBlockAssembler` `MdTheme` `MarkdownConfig` `MarkwonFactory` `BlockViewFactory` | 块级渲染：Markdown 按 Block 拆成独立 View（文本/代码/图片/分隔线），视图树差分复用 + 流式打字机。依赖 core + ext-tables。**[模块介绍](markwon-block/README.md)** |
+| `app-sample` | — | `MainActivity` `DefaultTheme` | 案例工程：插件全家桶演示，**[详见文档](app-sample/README.md)** |
+| `chat-demo` | — | `ChatActivity` `MarkdownTextBlockView` | 案例工程：独立 AI 聊天 App，markwon-block 分块渲染落地，**[详见文档](chat-demo/README.md)** |
 
 > `recycler` / `recycler-table` / `editor` **不是** `MarkwonPlugin`，不通过 `usePlugin` 注册。
-
-### 1.2 依赖关系
-
-所有模块都 `api project(':markwon-core')`（即引入扩展 = 自动带上 core）：
-
-```
-markwon-core  ──── commonmark (api)
-   │
-   ├── inline-parser          (api)
-   │      └── ext-latex       (api inline-parser)
-   ├── html                   (compileOnly commonmark-ext-gfm-strikethrough)
-   ├── linkify
-   ├── simple-ext
-   ├── syntax-highlight       (api prism4j)
-   ├── image                  (compileOnly androidsvg / android-gif-drawable / okhttp)
-   ├── image-glide
-   ├── editor
-   ├── recycler               (api androidx.recyclerview)
-   │      └── recycler-table  (api recycler + ext-tables)
-   ├── ext-strikethrough      (api commonmark-ext-gfm-strikethrough)
-   ├── ext-tables             (api commonmark-ext-gfm-tables)
-   ├── block                  (api core + api ext-tables；块级渲染，按 Block 拆 View)
-   └── ext-tasklist
-```
-
-`markwon-image` 的 `androidsvg` / `android-gif-drawable` / `okhttp` 是 `compileOnly`：**需要哪个能力，由使用方显式引入对应依赖**，
-放在 classpath 上就会被自动启用（SVG、GIF 解码器按 classpath 探测）。
-
----
+>
+> **模块介绍**：每个模块目录下都有自己的 `README.md`（组件说明 / 用法 / 主题配置 / 适配细节），
+> 从「怎么引入」到「怎么配样式」一站式可查。新增的 `markwon-block`（分块渲染，SSE 打字机的第三种渲染形态）
+> 见 [markwon-block/README.md](markwon-block/README.md)。
 
 ## 二、插件加载流程
 
@@ -79,13 +55,15 @@ markwon-core  ──── commonmark (api)
 Markwon.builder(ctx)                     → new MarkwonBuilderImpl(ctx).usePlugin(CorePlugin.create())
 Markwon.builderNoCore(ctx)               → 不预置 CorePlugin
         │
-   .usePlugin(p1).usePlugin(p2) ...      → plugins 按注册顺序进 List（CorePlugin 永远在第 0 位）
+   .usePlugin(p1).usePlugin(p2) ...      → plugins 按注册顺序进 List（usePlugin 只做收集，不排序）
         │
      .build()
         ├─ plugins.isEmpty() → IllegalStateException
         ├─ preparePlugins() = new RegistryImpl(plugins).process()
-        │     └─ 解析插件间依赖：plugin#configure(Registry) 里 registry.require(XxxPlugin.class)
-        │        声明「我依赖 XxxPlugin」→ 拓扑排序 + 去重，得出最终执行顺序
+        │     └─ 解析依赖 + 去重 + 排序（此时才定序）：
+        │         plugin#configure(Registry) 里 registry.require(XxxPlugin.class)
+        │         声明「我依赖 XxxPlugin」→ 依赖先于依赖者插入（效果 = 拓扑排序）
+        │         CorePlugin 强制插到第 0 位；重复实例去重；循环依赖抛异常
         ├─ 创建 5 个 Builder：
         │     Parser.Builder / MarkwonTheme.Builder(builderWithDefaults) /
         │     MarkwonConfiguration.Builder / MarkwonVisitor.Builder / MarkwonSpansFactory.Builder
@@ -227,28 +205,28 @@ repositories {
 
 dependencies {
     // 核心，必选
-    implementation 'com.github.android-xiao-jun.markwon-ext:core:4.6.2'
+    implementation 'com.github.android-xiao-jun.markwon-ext:core:b7730ffa9f'
 
     // 按需引入（每个扩展都会自动带上 core）
-    implementation 'com.github.android-xiao-jun.markwon-ext:ext-tables:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:ext-tasklist:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:ext-strikethrough:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:ext-latex:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:html:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:inline-parser:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:linkify:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:simple-ext:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:image:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:image-glide:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:syntax-highlight:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:recycler:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:recycler-table:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:editor:4.6.2'
-    implementation 'com.github.android-xiao-jun.markwon-ext:block:4.6.2'   // 块级渲染（自动带上 core + ext-tables）
+    implementation 'com.github.android-xiao-jun.markwon-ext:ext-tables:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:ext-tasklist:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:ext-strikethrough:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:ext-latex:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:html:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:inline-parser:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:linkify:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:simple-ext:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:image:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:image-glide:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:syntax-highlight:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:recycler:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:recycler-table:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:editor:b7730ffa9f'
+    implementation 'com.github.android-xiao-jun.markwon-ext:block:b7730ffa9f'   // 块级渲染（自动带上 core + ext-tables）
 }
 ```
 
-- `4.6.2` 换成实际 tag；**若还没打 tag**，可用分支快照 `master-SNAPSHOT`（JitPack 按 master 最新 commit 构建）。
+- 版本号 `b7730ffa9f` 是提交 hash（JitPack 按该 commit 构建）；打过 tag 后可换成 tag 名或分支快照 `master-SNAPSHOT`。
 - markwon 自身的发布坐标是 `com.github.android-xiao-jun.markwon-ext`，版本号写在 `gradle/maven-publish.gradle`。
 - 需要 `PrecomputedTextSetterCompat` 时，使用方要**显式**引入 `androidx.core` / `androidx.appcompat`（库内是 `compileOnly`）。
 - 可选运行时依赖（按能力选）：`com.caverock:androidsvg`（SVG）、`pl.droidsonroids.gif:android-gif-drawable:1.2.15`（GIF，
@@ -276,8 +254,12 @@ markwon.setMarkdown(textView, "# Hello\n\n| a | b |\n| --- | --- |\n| 1 | 2 |");
 ```java
 final Markwon.Builder builder = Markwon.builder(this);
 
-// 图片：GlideImagesPlugin 与 ImagesPlugin 二选一（都写 asyncDrawableLoader，后注册覆盖先注册）
-builder.usePlugin(createGlideImagesPlugin(Glide.with(getApplicationContext())));
+// 图片：GlideImagesPlugin 与 ImagesPlugin 二选一（都注册 asyncDrawableLoader，后注册覆盖先注册）
+if (useGlide) {
+    builder.usePlugin(createGlideImagesPlugin(Glide.with(this)));
+} else {
+    builder.usePlugin(createImagesPlugin());
+}
 
 builder
         // ---- 解析能力 ----
@@ -432,57 +414,43 @@ Markwon.builder(this)
 
 ## 五、案例工程
 
+两个可运行的 demo，定位互补（详细文档均独立成文：代码引入 → 模块使用 → 主题配置 → 案例图 / APK）：
+
+| demo | 定位 | 完整介绍 |
+| --- | --- | --- |
+| `app-sample` | **插件能力案例**：装配全部插件 + `DefaultTheme` 样式唯一入口 + 流式 SSE 增量校验 | [app-sample/README.md](app-sample/README.md) |
+| `chat-demo` | **markwon-block 落地案例**：完整 AI 聊天 App，分块渲染 + `appendMarkdown` 流式打字机 | [chat-demo/README.md](chat-demo/README.md) |
+
 ### 5.1 app-sample（插件能力案例）
 
-```
-app-sample/
-├── src/main/java/io/noties/markwon/sample/
-│   ├── MainActivity.java          # 装配 Markwon + 三个案例（图片 / 全插件 / 流式SSE）
-│   ├── DefaultTheme.java          # 主题唯一入口：框架默认值快照 + 工厂
-│   ├── SampleGrammarLocator.java  # 手写代码高亮语法定义
-│   └── SampleApp.java             # MultiDexApplication
-└── src/main/res/
-    ├── layout/activity_main.xml
-    ├── values/strings.xml colors.xml styles.xml
-    └── raw/
-        ├── case_image.txt         # 图片案例
-        ├── case_all_plugins.txt   # 全插件案例
-        └── case_3.txt             # 流式 SSE 案例
-```
+Java 演示工程（minSdk 16）：图片 / 表格 / 代码块滚动与复制 / LaTeX / 语法高亮等全部插件装配进一个
+`Markwon`，三个 raw 案例一键渲染；`DefaultTheme` 是样式唯一入口（九节常量 + 全部插件工厂）；
+SSE 案例用 `MarkwonAppendState` 增量解析、收尾做 `identical` 校验；另有 `BlockDemoActivity`
+演示 `MarkdownTextBlockView` 整段 / 流式 / 明暗主题三场景。
+→ 代码引入、装配顺序、SSE 写法、主题配置详见 [app-sample/README.md](app-sample/README.md)
 
-### 5.2 chat-demo（AI 聊天案例：markwon-block + appendMarkdown 落地演示）
+### 5.2 chat-demo（AI 聊天案例：markwon-block 分块渲染 + 流式打字机）
 
-`chat-demo/` 是**独立的 Android 应用**（applicationId `io.noties.markwon.chatdemo`，minSdk 19），
-把 markwon 全家桶丢进真实 SSE 聊天场景做完整演示：
+独立 AI 聊天 App（Kotlin，minSdk 19）：OkHttp 直连 DeepSeek 的 SSE 流式输出，AI 回复用
+`MarkdownTextBlockView` 分块渲染 —— 文本 / 代码 / 图片 / 分隔线各拆独立 View，增量只差分尾部、
+新后缀淡入（打字机视觉）；叠加思考 / 工具 `ChatTrailSegment` 交替展示、侧滑会话历史
+（Room 只存文件路径）、附件按类型入参、Agent 工具链与权限弹窗。
+AI 连接配置在根目录 `local.properties`（`ai.baseUrl` / `ai.apiKey` / `ai.model`）。
+→ 入口 / 布局 / `renderMarkdown` / `appendMarkdown` / 主题样式配置详见 [chat-demo/README.md](chat-demo/README.md)
 
-- **聊天 / Agent 双模式**：胶囊分段切换；DeepSeek 模型用 OkHttp + Retrofit 直连，
-  SSE 流式接收 token；右上角配置弹窗可切模型 / baseUrl / 日志级别。
-- **AI 回复渲染（markwon 的核心演示点）**：每条 AI 消息用 `MarkdownTextBlockView`（markwon-block）块级渲染 ——
-  文本 / 代码 / 图片 / 分隔线各拆成独立 View，块级公共前缀复用、新后缀淡入，
-  叠加 `Markwon#appendMarkdown` 增量解析与打字机光标，SSE 期间是平滑打字效果；
-  思考过程面板可独立滚动（内部滚动优先消费），表格支持横向滚动。
-- **思考 + 工具交替展示**：多次 Agent 调用时，思考段与工具调用按 `ChatTrailSegment` 有序交替渲染，
-  工具卡片原位更新，不重建思考段。
-- **侧滑会话历史**：DrawerLayout 承载历史会话（新建 / 切换 / 删除，删除二次确认），
-  Room 本地持久化消息与会话，**数据库只存文件地址、不存文件内容**。
-- **附件处理**：文本类文件（txt / md / json / kt / java 等 24 种白名单）读取内容作为文本片段传入模型，
-  二进制 / PDF 传占位说明（文件名 / 类型 / 大小），图片按模型能力选择 Base64 多模态或占位文本；
-  请求体构造（含附件 Base64 / 文件读取）一律在 IO 线程执行，避免主线程卡顿。
-- **Agent 工具链**：读 / 写 / 搜索文件、剪贴板、设备 / 存储 / 内存 / 电池 / 屏幕信息、联系人、蓝牙、
-  闹钟 / 定时器、拨号、清缓存等，敏感工具由 `ToolPermissionManager` 弹窗授权（支持去系统设置）。
-- **消息反馈**：发送失败在用户消息左侧显示红色感叹号；AI 消息底部提供复制 / 重新生成。
+### 5.3 案例图与 APK
 
-> ⚠️ AI 连接配置写在根目录 `local.properties`（key：`ai.baseUrl` / `ai.apiKey` / `ai.model`），
-> 由 `chat-demo/build.gradle` 注入 `BuildConfig`，未配置时聊天入口不可用。
+预编译好的两个 APK 放在仓库根目录的 `apk/` 下，可直接下载安装到真机：
 
-![ChatDemo示例](chat-demo示例图.jpg)
+| demo | 案例图 | APK（可直接安装） |
+| --- | --- | --- |
+| app-sample | ![默认样式示例](images/默认样式示例图.jpg) | [app-sample-debug.apk](apk/app-sample-debug.apk) |
+| chat-demo | ![聊天案例示例](images/聊天案例示例图.jpg)<br/>![Agent 查询闹钟](images/UI案例图.png)<br/>![Agent 工具列表](images/UI案例图2.png) | [chat-demo-debug.apk](apk/chat-demo-debug.apk) |
+
+> 想自己重新打包：`./gradlew :app-sample:assembleDebug` / `:chat-demo:assembleDebug`，
+> 产物在各自的 `build/outputs/apk/debug/`（`build/` 不被 Git 跟踪）；打包前先确认根目录
+> `settings.gradle` 已包含 `include ':app-sample'` 与 `include ':chat-demo'`（需手动取消注释开启）。
 
 ## License
 
-Apache License 2.0 —— 见 [LICENSE](LICENSE)。上游版权归 [noties/Markwon](https://github.com/noties/Markwon) 所有。
-
----
-
-## 默认样式示例
-
-![默认样式示例](默认样式示例图.jpg)
+Apache License 2.0 —— 见 [LICENSE](LICENSE)。上游版权归 [noties/Markwon](https://github.com/noties/Markwon) 所有。如有版权问题，联系我删除！

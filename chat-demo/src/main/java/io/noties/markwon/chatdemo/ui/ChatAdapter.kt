@@ -307,6 +307,8 @@ class ChatAdapter(
                     is ChatTrailSegment.Tools -> inflateToolsSegment(seg)
                 }
             }
+            // 容器有内容时显示，无内容时隐藏
+            llTrail.visibility = if (item.trail.isEmpty()) View.GONE else View.VISIBLE
             // 思考全文长度与已渲染长度对齐（后续 append 增量校验）
             viewSyncedThinkingLength = item.thinking.length
         }
@@ -325,6 +327,8 @@ class ChatAdapter(
                 }
                 i++
             }
+            // 流式中新段挂载后显示容器
+            if (item.trail.isNotEmpty()) llTrail.visibility = View.VISIBLE
         }
 
         /** inflate 一段思考面板（可折叠 + 内部滚动 + 流式跟随） */
