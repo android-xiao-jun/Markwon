@@ -36,13 +36,17 @@ import io.noties.markwon.core.scroll.GestureRouter;
  *
  * @since 4.6.3
  */
-final class TableScrollTouchListener implements View.OnTouchListener {
+public final class TableScrollTouchListener implements View.OnTouchListener {
 
     /**
      * Registers this listener on {@code textView}. Safe to call for every {@code setText} —
      * the router replaces its own entry, and the listener is stateless between gestures.
+     *
+     * <p>公开为 {@code public static}：markwon-block 的流式/增量管线直接
+     * {@code setText} 绕过 {@code Markwon.setText}（{@code TablePlugin.afterSetText}
+     * 不会触发），需要手动调用本方法完成横向滚动触控挂载。
      */
-    static void attach(@NonNull TextView textView) {
+    public static void attach(@NonNull TextView textView) {
         GestureRouter.attach(textView)
                 .add(TableScrollTouchListener.class, new TableScrollTouchListener(textView));
     }

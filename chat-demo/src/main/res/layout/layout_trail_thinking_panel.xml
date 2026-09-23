@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 渲染轨迹：单段思考面板（可折叠；多轮 Agent 时每轮思考独立一段，按顺序挂载到 ll_trail_container） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/trail_thinking_panel"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/bg_thinking"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/trail_think_toggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🧠 思考过程"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/trail_think_arrow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="▸"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 思考内容：最大高度 + 内容过多时内部滚动（流式输出时自动跟随到底部） -->
+    <io.noties.markwon.chatdemo.ui.MaxHeightNestedScrollView
+        android:id="@+id/trail_think_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:overScrollMode="never"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/trail_think_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp"
+            android:textColor="@color/thinking_text"
+            android:textSize="13sp" />
+    </io.noties.markwon.chatdemo.ui.MaxHeightNestedScrollView>
+</LinearLayout>

@@ -20,6 +20,7 @@ import io.noties.markwon.block.render.MdTheme;
 import io.noties.markwon.block.render.StreamSpans;
 import android.widget.TextView;
 import io.noties.markwon.ext.tables.TableRowSpan;
+import io.noties.markwon.ext.tables.TableScrollTouchListener;
 
 /**
  * 文本块视图（复刻豆包 CustomMarkdownTextView）。
@@ -30,8 +31,8 @@ import io.noties.markwon.ext.tables.TableRowSpan;
  *     <li>表格 invalidator 接线：markwon 手动 {@code setText} 生命周期下
  *         {@link TableRowSpan} 的行高不会自收敛（invalidator 为 null），
  *         必须手动挂「合并 invalidate → 主线程 setText」触发重测重排；</li>
- *     <li>流式打字机：新后缀 {@link StreamSpans.ForegroundAlphaSpan} 淡入 +
- *         末尾 {@link StreamSpans.TypingCursorSpan} 闪烁光标；</li>
+ *     <li>流式打字机：新后缀 {@link StreamSpans.ForegroundAlphaSpan} 淡入
+ *     （取消末尾闪烁光标，避免干扰内容阅读）；</li>
  *     <li>hasTable 时 onMeasure 走 EXACTLY 宽度，保证表格行盒取满列宽。</li>
  * </ul>
  */
@@ -39,7 +40,6 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
 
     private static final int FADE_STEPS = 24;
     private static final long FADE_STEP_MS = 16L;
-    private static final long CURSOR_BLINK_MS = 420L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final MdTheme theme;
@@ -68,22 +68,6 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
         }
     };
 
-    // 光标闪烁状态
-    private StreamSpans.TypingCursorSpan cursorSpan;
-    private boolean cursorVisible;
-    private final Runnable blinkTick = new Runnable() {
-        @Override
-        public void run() {
-            if (cursorSpan == null) {
-                return;
-            }
-            cursorVisible = !cursorVisible;
-            cursorSpan.setVisible(cursorVisible);
-            invalidate();
-            mainHandler.postDelayed(this, CURSOR_BLINK_MS);
-        }
-    };
-
     public CustomMarkdownTextView(@NonNull Context context) {
         this(context, MdTheme.light(), new MarkdownConfig.Builder().build());
     }
@@ -103,6 +87,9 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
         setBackgroundColor(theme.getTextBackground());
         setMovementMethod(LinkMovementMethod.getInstance());
         setIncludeFontPadding(false);
+        // 行距微扩（+2dp / 1.12 倍），正文多行时更透气
+        final float density = getResources().getDisplayMetrics().density;
+        setLineSpacing(Math.round(2f * density), 1.12f);
     }
 
     /**
@@ -124,8 +111,9 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
 
         final SpannableStringBuilder ssb = new SpannableStringBuilder(content.getSpannable());
 
-        // 表格 invalidator 接线（必须，否则行高不收敛 → 文字重叠）
-        if (hasTable) {
+        // 表格 invalidator 接线（终态渲染必须：行高收敛；流式打字机每帧全量 setText
+        // 本就驱动重测，再加 invalidator 的 post setText 会造成表格反复闪烁）
+        if (hasTable && !streaming) {
             wireTableRowInvalidator(ssb);
         }
 
@@ -136,22 +124,16 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
             ssb.setSpan(fadeSpan, fadeFrom, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
 
-        // 打字机光标（流式且非空）
-        if (streaming && ssb.length() > 0) {
-            final float density = getResources().getDisplayMetrics().density;
-            cursorSpan = new StreamSpans.TypingCursorSpan(theme.getTypingCursorColor(), 1.5f * density);
-            cursorVisible = true;
-            ssb.append(StreamSpans.CURSOR_PLACEHOLDER);
-            ssb.setSpan(cursorSpan, ssb.length() - 1, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-
         setText(ssb, TextView.BufferType.SPANNABLE);
+
+        if (hasTable) {
+            // 直接 setText 绕过 Markwon.setText → TablePlugin.afterSetText 不触发，
+            // 必须手动挂载表格横向滚动触控（幂等：GestureRouter 按 key 覆盖）
+            TableScrollTouchListener.attach(this);
+        }
 
         if (fadeSpan != null) {
             mainHandler.post(fadeTick);
-        }
-        if (cursorSpan != null) {
-            mainHandler.postDelayed(blinkTick, CURSOR_BLINK_MS);
         }
     }
 
@@ -211,8 +193,6 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
 
     private void stopEffects() {
         mainHandler.removeCallbacks(fadeTick);
-        mainHandler.removeCallbacks(blinkTick);
         fadeSpan = null;
-        cursorSpan = null;
     }
 }

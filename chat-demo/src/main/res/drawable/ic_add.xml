@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 加号（底栏右侧附件入口，设计稿 icon/add 28x28） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <path
+        android:fillColor="#181818"
+        android:pathData="M14,7.5a1.1,1.1 0,0 1,1.1 1.1v4.3h4.3a1.1,1.1 0,0 1,0 2.2h-4.3v4.3a1.1,1.1 0,0 1,-2.2 0v-4.3H8.6a1.1,1.1 0,0 1,0 -2.2h4.3V8.6A1.1,1.1 0,0 1,14 7.5z" />
+</vector>

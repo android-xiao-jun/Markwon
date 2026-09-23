@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 气泡（设计稿：白色 圆角12） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/ai_bubble_bg" />
+    <corners android:radius="12dp" />
+</shape>

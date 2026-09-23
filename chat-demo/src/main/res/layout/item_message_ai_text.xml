@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?><!-- AI 消息（设计稿：白色气泡 圆角12 padding 8x10x6） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="start"
+    android:orientation="vertical"
+    android:paddingStart="21dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="21dp"
+    android:paddingBottom="4dp">
+
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_ai_bubble"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
+
+        <io.noties.markwon.chatdemo.ui.ThinkingDotsView
+            android:id="@+id/thinking_dots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="6dp"
+            android:visibility="gone" />
+
+        <!-- 渲染轨迹（动态容器）：思考段面板 + 工具步骤卡片按模型输出顺序交替挂载，
+             多轮 Agent 产生「思考 → 工具 → 思考 → 工具 → 文本」的连贯展示 -->
+        <LinearLayout
+            android:id="@+id/ll_trail_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Markdown 渲染视图 -->
+        <io.noties.markwon.block.view.MarkdownTextBlockView
+            android:id="@+id/ai_markdown_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/ll_trail_container"
+            android:visibility="gone" />
+
+        <!-- 反馈操作栏（设计稿：上分割线 + 底圆角，左：复制 / 重新生成 图标按钮） -->
+        <LinearLayout
+            android:id="@+id/ll_ai_feedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/ai_markdown_view"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/feedback_divider" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingTop="8dp">
+
+                <ImageView
+                    android:id="@+id/iv_feedback_copy"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_msg_copy" />
+
+                <ImageView
+                    android:id="@+id/iv_feedback_regenerate"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_msg_regenerate" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
+    </RelativeLayout>
+</LinearLayout>

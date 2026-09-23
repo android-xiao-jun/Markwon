@@ -37,6 +37,9 @@ public final class MdTheme {
     private final int tableBorderColor;
     @ColorInt
     private final int typingCursorColor;
+    /** 行内 code 文字色（豆包/GitHub 风格红粉系，light 深红 / dark 亮粉） */
+    @ColorInt
+    private final int inlineCodeTextColor;
     /** 流式新增字符淡入开关 */
     private final boolean alphaFade;
 
@@ -52,6 +55,7 @@ public final class MdTheme {
         this.tableHeaderColor = builder.tableHeaderColor;
         this.tableBorderColor = builder.tableBorderColor;
         this.typingCursorColor = builder.typingCursorColor;
+        this.inlineCodeTextColor = builder.inlineCodeTextColor;
         this.alphaFade = builder.alphaFade;
     }
 
@@ -70,9 +74,10 @@ public final class MdTheme {
                 .codeBackground(Color.parseColor("#1B1D22"))
                 .codeHeaderBackground(Color.parseColor("#22252B"))
                 .codeBorderColor(Color.parseColor("#2E3239"))
-                .tableHeaderColor(Color.parseColor("#6E9BFF"))
+                .tableHeaderColor(Color.parseColor("#2A3142"))
                 .tableBorderColor(Color.parseColor("#2E3239"))
                 .typingCursorColor(Color.parseColor("#6E9BFF"))
+                .inlineCodeTextColor(Color.parseColor("#FF8A9E"))
                 .build();
     }
 
@@ -87,9 +92,10 @@ public final class MdTheme {
                 .codeBackground(Color.parseColor("#2A2D32"))
                 .codeHeaderBackground(Color.parseColor("#32363C"))
                 .codeBorderColor(Color.parseColor("#3F444C"))
-                .tableHeaderColor(Color.parseColor("#9DBFFF"))
+                .tableHeaderColor(Color.parseColor("#343B4D"))
                 .tableBorderColor(Color.parseColor("#3F444C"))
                 .typingCursorColor(Color.WHITE)
+                .inlineCodeTextColor(Color.parseColor("#FF8A9E"))
                 .build();
     }
 
@@ -148,6 +154,11 @@ public final class MdTheme {
         return typingCursorColor;
     }
 
+    @ColorInt
+    public int getInlineCodeTextColor() {
+        return inlineCodeTextColor;
+    }
+
     public boolean isAlphaFade() {
         return alphaFade;
     }
@@ -157,7 +168,8 @@ public final class MdTheme {
         return Arrays.hashCode(new Object[]{
                 name, textColor, secondaryTextColor, linkColor, codeBackground,
                 codeHeaderBackground, codeBorderColor, textBackground,
-                tableHeaderColor, tableBorderColor, typingCursorColor, alphaFade
+                tableHeaderColor, tableBorderColor, typingCursorColor,
+                inlineCodeTextColor, alphaFade
         });
     }
 
@@ -180,6 +192,7 @@ public final class MdTheme {
                 && tableHeaderColor == theme.tableHeaderColor
                 && tableBorderColor == theme.tableBorderColor
                 && typingCursorColor == theme.typingCursorColor
+                && inlineCodeTextColor == theme.inlineCodeTextColor
                 && alphaFade == theme.alphaFade
                 && name.equals(theme.name);
     }
@@ -194,9 +207,10 @@ public final class MdTheme {
         private int codeHeaderBackground = Color.parseColor("#E8EAED");
         private int codeBorderColor = Color.parseColor("#D9DDE3");
         private int textBackground = Color.TRANSPARENT;
-        private int tableHeaderColor = Color.parseColor("#3370FF");
+        private int tableHeaderColor = Color.parseColor("#E9EFFB");
         private int tableBorderColor = Color.parseColor("#D9DDE3");
         private int typingCursorColor = Color.parseColor("#3370FF");
+        private int inlineCodeTextColor = Color.parseColor("#C7384A");
         private boolean alphaFade = true;
 
         @NonNull
@@ -262,6 +276,12 @@ public final class MdTheme {
         @NonNull
         public Builder typingCursorColor(@ColorInt int color) {
             this.typingCursorColor = color;
+            return this;
+        }
+
+        @NonNull
+        public Builder inlineCodeTextColor(@ColorInt int color) {
+            this.inlineCodeTextColor = color;
             return this;
         }
 

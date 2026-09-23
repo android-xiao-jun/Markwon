@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 用户气泡（设计稿：#E2E9FF 圆角12 padding 8x10） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/user_bubble_bg" />
+    <corners android:radius="12dp" />
+</shape>

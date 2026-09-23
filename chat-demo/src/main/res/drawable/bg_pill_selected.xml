@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶栏胶囊选中块（设计稿：#6674FF 圆角15） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/pill_selected" />
+    <corners android:radius="15dp" />
+</shape>

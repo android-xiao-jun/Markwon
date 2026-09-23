@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 更多（抽屉）icon，设计稿顶部信息左侧 40x40 触控区 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#181818"
+        android:pathData="M4.5,6.5h15a1.1,1.1 0,0 0,0 -2.2h-15a1.1,1.1 0,0 0,0 2.2z" />
+    <path
+        android:fillColor="#181818"
+        android:pathData="M4.5,13.1h15a1.1,1.1 0,0 0,0 -2.2h-15a1.1,1.1 0,0 0,0 2.2z" />
+    <path
+        android:fillColor="#181818"
+        android:pathData="M4.5,19.7h15a1.1,1.1 0,0 0,0 -2.2h-15a1.1,1.1 0,0 0,0 2.2z" />
+</vector>

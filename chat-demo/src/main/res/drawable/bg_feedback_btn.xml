@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 消息反馈操作按钮底（设计稿：#EEF3FF 圆角4） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#EEF3FF" />
+    <corners android:radius="4dp" />
+</shape>

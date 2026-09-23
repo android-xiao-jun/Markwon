@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底部输入卡片（设计稿：白色 圆角8 阴影 rgba(185,200,255,0.3)，阴影由 elevation 提供） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/white" />
+    <corners android:radius="8dp" />
+</shape>

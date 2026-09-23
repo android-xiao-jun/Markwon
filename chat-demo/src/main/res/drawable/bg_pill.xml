@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 顶栏胶囊底（设计稿：rgba(255,255,255,0.37) 圆角47/2） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/pill_bg" />
+    <corners android:radius="18dp" />
+</shape>

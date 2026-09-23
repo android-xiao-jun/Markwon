@@ -46,6 +46,18 @@ public abstract class CoreProps {
     public static final Prop<CodeBlockScrollState> CODE_BLOCK_SCROLL_STATE =
             Prop.of("code-block-scroll-state");
 
+    /**
+     * <b>Original</b> literal of the inline code currently being rendered. Set by
+     * {@code CorePlugin} while visiting the node, read by {@code CodeSpanFactory}
+     * to decide whether the rounded pill ({@code CodeRoundedSpan}) can be applied:
+     * a {@code ReplacementSpan} is one unbreakable unit, so a long literal (path,
+     * URL, command) overflows its line/table column instead of wrapping — those
+     * must fall back to the wrap-friendly plain {@code CodeSpan}.
+     *
+     * @since 4.6.3
+     */
+    public static final Prop<String> CODE_TEXT = Prop.of("code-text");
+
     public enum ListItemType {
         BULLET,
         ORDERED

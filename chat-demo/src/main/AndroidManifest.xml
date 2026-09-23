@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.noties.markwon.chatdemo">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Agent 文件工具：公共存储读写（targetSdk 29 传统存储模型，运行时按需申请） -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Agent 闹钟工具：AlarmClock 协议（普通权限，安装即授予） -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Agent 联系人工具：通讯录读取（运行时按需申请） -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Agent 蓝牙工具：30 及以下为安装时授予的普通权限；31+ 由 BLUETOOTH_CONNECT 运行时申请 -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".ChatDemoApp"
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".ui.ChatActivity"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

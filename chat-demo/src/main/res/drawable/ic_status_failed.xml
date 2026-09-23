@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 发送失败状态 icon（设计稿：#FF5555 圆底感叹号） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#33FF5555"
+        android:pathData="M12,12m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0" />
+    <path
+        android:fillColor="#FF5555"
+        android:pathData="M12,5.5a1.2,1.2 0,0 1,1.2 1.2v5.8a1.2,1.2 0,0 1,-2.4 0V6.7A1.2,1.2 0,0 1,12 5.5z" />
+    <path
+        android:fillColor="#FF5555"
+        android:pathData="M12,16.2a1.3,1.3 0,1 1,0 2.6a1.3,1.3 0,0 1,0 -2.6z" />
+</vector>

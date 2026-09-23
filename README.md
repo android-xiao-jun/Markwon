@@ -9,6 +9,9 @@
 >    统一走 `MarkwonTheme`（以及 `CodeBlockCopyTheme` / `TableTheme`），且**一律 opt-in**：不配置就没有这个属性；
 > 3. **提供一份框架默认值的显式快照** `DefaultTheme` —— Markwon 的默认样式
 > 4. 修复`Table`展示异常，以及增加`Table`可以横向滚动（整块区域拖拽 + 与代码块同样式的底部滚动条，见 [3.7](#37-表格横向滚动拖拽--底部滚动条)）
+>
+> 5. **新增块级渲染模块 `markwon-block`** —— 把 Markdown 按 Block 拆成独立 View（文本 / 代码 / 图片 / 分隔线），
+>    自带视图复用与流式打字机，是 SSE / LLM 场景的另一种渲染形态（见 [5.2](#52-chat-demoai-聊天案例markwon-block--appendmarkdown-落地演示)）
 
 ---
 
@@ -33,7 +36,8 @@
 | `markwon-recycler` | `recycler` | `MarkwonAdapter` | 用 RecyclerView 渲染 Markdown（**不是插件**） |
 | `markwon-recycler-table` | `recycler-table` | `MarkwonAdapter.Entry` | 把表格渲染成原生 `TableLayout` |
 | `markwon-editor` | `editor` | 编辑器视图 | Markdown 编辑（**不是插件**） |
-| `markwon-ext-view` | `ext-view` | — | 空壳，暂无源码 |
+| `markwon-ext-view` | — | — | 空壳，暂无源码 |
+| `markwon-block` | `block` | `MarkdownTextBlockView` `MarkdownBlockAssembler` `MdTheme` `MarkdownConfig` `MarkwonFactory` `BlockViewFactory` | 块级渲染：Markdown 按 Block 拆成独立 View（文本/代码/图片/分隔线），视图树差分复用 + 流式打字机。依赖 core + ext-tables |
 | `app-sample` | — | `MainActivity` `DefaultTheme` | 案例工程，演示全部插件 |
 
 > `recycler` / `recycler-table` / `editor` **不是** `MarkwonPlugin`，不通过 `usePlugin` 注册。
@@ -58,6 +62,7 @@ markwon-core  ──── commonmark (api)
    │      └── recycler-table  (api recycler + ext-tables)
    ├── ext-strikethrough      (api commonmark-ext-gfm-strikethrough)
    ├── ext-tables             (api commonmark-ext-gfm-tables)
+   ├── block                  (api core + api ext-tables；块级渲染，按 Block 拆 View)
    └── ext-tasklist
 ```
 
@@ -186,7 +191,9 @@ include ':markwon-core',
         ':markwon-simple-ext',
         ':markwon-syntax-highlight',
         ':markwon-ext-view',
-        ':app-sample'
+        ':markwon-block',
+        ':app-sample',
+        ':chat-demo'
 ```
 
 ```gradle
@@ -237,6 +244,7 @@ dependencies {
     implementation 'com.github.android-xiao-jun.markwon-ext:recycler:4.6.2'
     implementation 'com.github.android-xiao-jun.markwon-ext:recycler-table:4.6.2'
     implementation 'com.github.android-xiao-jun.markwon-ext:editor:4.6.2'
+    implementation 'com.github.android-xiao-jun.markwon-ext:block:4.6.2'   // 块级渲染（自动带上 core + ext-tables）
 }
 ```
 
@@ -424,6 +432,8 @@ Markwon.builder(this)
 
 ## 五、案例工程
 
+### 5.1 app-sample（插件能力案例）
+
 ```
 app-sample/
 ├── src/main/java/io/noties/markwon/sample/
@@ -439,6 +449,33 @@ app-sample/
         ├── case_all_plugins.txt   # 全插件案例
         └── case_3.txt             # 流式 SSE 案例
 ```
+
+### 5.2 chat-demo（AI 聊天案例：markwon-block + appendMarkdown 落地演示）
+
+`chat-demo/` 是**独立的 Android 应用**（applicationId `io.noties.markwon.chatdemo`，minSdk 19），
+把 markwon 全家桶丢进真实 SSE 聊天场景做完整演示：
+
+- **聊天 / Agent 双模式**：胶囊分段切换；DeepSeek 模型用 OkHttp + Retrofit 直连，
+  SSE 流式接收 token；右上角配置弹窗可切模型 / baseUrl / 日志级别。
+- **AI 回复渲染（markwon 的核心演示点）**：每条 AI 消息用 `MarkdownTextBlockView`（markwon-block）块级渲染 ——
+  文本 / 代码 / 图片 / 分隔线各拆成独立 View，块级公共前缀复用、新后缀淡入，
+  叠加 `Markwon#appendMarkdown` 增量解析与打字机光标，SSE 期间是平滑打字效果；
+  思考过程面板可独立滚动（内部滚动优先消费），表格支持横向滚动。
+- **思考 + 工具交替展示**：多次 Agent 调用时，思考段与工具调用按 `ChatTrailSegment` 有序交替渲染，
+  工具卡片原位更新，不重建思考段。
+- **侧滑会话历史**：DrawerLayout 承载历史会话（新建 / 切换 / 删除，删除二次确认），
+  Room 本地持久化消息与会话，**数据库只存文件地址、不存文件内容**。
+- **附件处理**：文本类文件（txt / md / json / kt / java 等 24 种白名单）读取内容作为文本片段传入模型，
+  二进制 / PDF 传占位说明（文件名 / 类型 / 大小），图片按模型能力选择 Base64 多模态或占位文本；
+  请求体构造（含附件 Base64 / 文件读取）一律在 IO 线程执行，避免主线程卡顿。
+- **Agent 工具链**：读 / 写 / 搜索文件、剪贴板、设备 / 存储 / 内存 / 电池 / 屏幕信息、联系人、蓝牙、
+  闹钟 / 定时器、拨号、清缓存等，敏感工具由 `ToolPermissionManager` 弹窗授权（支持去系统设置）。
+- **消息反馈**：发送失败在用户消息左侧显示红色感叹号；AI 消息底部提供复制 / 重新生成。
+
+> ⚠️ AI 连接配置写在根目录 `local.properties`（key：`ai.baseUrl` / `ai.apiKey` / `ai.model`），
+> 由 `chat-demo/build.gradle` 注入 `BuildConfig`，未配置时聊天入口不可用。
+
+![ChatDemo示例](chat-demo示例图.jpg)
 
 ## License
 

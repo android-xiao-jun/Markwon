@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 新建对话按钮（浅主色底） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#1A6674FF" />
+    <corners android:radius="16dp" />
+</shape>

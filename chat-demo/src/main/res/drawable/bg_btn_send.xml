@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 发送按钮（主色胶囊） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/pill_selected" />
+    <corners android:radius="14dp" />
+</shape>

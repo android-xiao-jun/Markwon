@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色（设计稿：选中胶囊/强调 #6674FF） -->
+    <color name="colorPrimary">#6674FF</color>
+    <color name="colorPrimaryDark">#F3F6F9</color>
+    <color name="colorAccent">#6674FF</color>
+
+    <!-- 页面背景（设计稿：颜色/底背F3F6F9） -->
+    <color name="page_bg">#F3F6F9</color>
+    <color name="white">#FFFFFF</color>
+
+    <!-- 气泡 -->
+    <color name="user_bubble_bg">#E2E9FF</color>
+    <color name="ai_bubble_bg">#FFFFFF</color>
+
+    <!-- 文本 -->
+    <color name="text_primary">#181818</color>
+    <color name="text_secondary">#8A8F99</color>
+    <color name="text_hint">#66000000</color>
+    <color name="divider">#EEEEEE</color>
+
+    <!-- 状态色（设计稿：失败/取消 #FF5555） -->
+    <color name="status_failed">#FF5555</color>
+
+    <!-- AI 消息反馈栏（设计稿：分割线 #F3F3F3 / 按钮底 #EEF3FF） -->
+    <color name="feedback_divider">#F3F3F3</color>
+    <color name="feedback_btn_bg">#EEF3FF</color>
+
+    <!-- 顶栏语言胶囊（设计稿：bg rgba(255,255,255,0.37)） -->
+    <color name="pill_bg">#5EFFFFFF</color>
+    <color name="pill_selected">#6674FF</color>
+
+    <!-- 抽屉遮罩（设计稿 Dim：rgba(17,24,39,0.18)） -->
+    <color name="drawer_mask">#2E111827</color>
+
+    <color name="chip_bg">#F0F2F5</color>
+
+    <!-- 思考过程 / Agent -->
+    <color name="thinking_bg">#F4F6FA</color>
+    <color name="thinking_text">#6B7280</color>
+    <color name="agent_step_bg">#EFF3FE</color>
+    <color name="session_selected_bg">#E2E9FF</color>
+</resources>

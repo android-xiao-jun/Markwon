@@ -283,6 +283,11 @@ public class CorePlugin extends AbstractMarkwonPlugin {
                         .append(code.getLiteral())
                         .append('\u00a0');
 
+                // @since 4.6.3 — hand the literal to the SpanFactory: CodeRoundedSpan is a
+                // ReplacementSpan (one unbreakable glyph), so over-long code must degrade to
+                // the wrap-friendly CodeSpan or it overflows its line / table column
+                CoreProps.CODE_TEXT.set(visitor.renderProps(), code.getLiteral());
+
                 visitor.setSpansForNodeOptional(code, length);
             }
         });

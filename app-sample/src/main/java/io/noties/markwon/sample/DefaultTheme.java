@@ -10,6 +10,9 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.content.res.AppCompatResources;
 
 import io.noties.markwon.AbstractMarkwonPlugin;
+import io.noties.markwon.block.render.MarkdownConfig;
+import io.noties.markwon.block.render.MdTheme;
+import io.noties.markwon.block.view.MarkdownTextBlockView;
 import io.noties.markwon.core.CodeBlockCopyTheme;
 import io.noties.markwon.core.MarkwonTheme;
 import io.noties.markwon.core.scroll.CodeBlockScrollPlugin;
@@ -376,6 +379,92 @@ public final class DefaultTheme {
     @ColorInt
     public static final int MARK_HIGHLIGHT_COLOR = 0xFFFFF176;
 
+    // =====================================================================
+    // 九、markwon-block —— MarkdownTextBlockView 的块级渲染主题与配置
+    //     这些值 = 框架自带默认值的「显式快照」，也正是 chat-demo 案例实际使用的观感
+    //     （MdTheme#light() + MarkdownConfig 默认 Builder + 内置 Markwon 管线）。
+    //     与上面 core / 表格的做法一致：看默认值、改默认值都只在这一个文件。
+    // =====================================================================
+
+    // ---------- MdTheme（MdTheme#light() 的 12 项） ----------
+
+    /** 块主题名（仅作标识，无视觉作用）。 */
+    private static final String BLOCK_THEME_NAME = "light";
+
+    /** 正文文字色。默认 {@code #1F2329}（近黑）。 */
+    @ColorInt
+    private static final int BLOCK_TEXT_COLOR = 0xFF1F2329;
+
+    /** 次要文字色：列表符号 / 图片占位文案等。默认 {@code #646A73}（中灰）。 */
+    @ColorInt
+    private static final int BLOCK_SECONDARY_TEXT_COLOR = 0xFF646A73;
+
+    /** 链接色。默认 {@code #3370FF}（品牌蓝，markwon-block 豆包风格）。 */
+    @ColorInt
+    private static final int BLOCK_LINK_COLOR = 0xFF3370FF;
+
+    /** 代码块背景（行内 code 与其共用）。默认 {@code #F2F3F5}。 */
+    @ColorInt
+    private static final int BLOCK_CODE_BACKGROUND = 0xFFF2F3F5;
+
+    /** 代码块 header（语言栏）背景。默认 {@code #E8EAED}。 */
+    @ColorInt
+    private static final int BLOCK_CODE_HEADER_BACKGROUND = 0xFFE8EAED;
+
+    /** 代码块描边色。默认 {@code #D9DDE3}。 */
+    @ColorInt
+    private static final int BLOCK_CODE_BORDER_COLOR = 0xFFD9DDE3;
+
+    /** 正文字背景。默认透明（由外层气泡 / 卡片衬底）。 */
+    @ColorInt
+    private static final int BLOCK_TEXT_BACKGROUND = 0x00000000;
+
+    /** 表格表头行底色。默认 {@code #E9EFFB}。 */
+    @ColorInt
+    private static final int BLOCK_TABLE_HEADER_COLOR = 0xFFE9EFFB;
+
+    /** 表格边框色。默认 {@code #D9DDE3}（与代码块描边同色）。 */
+    @ColorInt
+    private static final int BLOCK_TABLE_BORDER_COLOR = 0xFFD9DDE3;
+
+    /** 打字机光标色。默认 {@code #3370FF}（与链接色同源）。 */
+    @ColorInt
+    private static final int BLOCK_TYPING_CURSOR_COLOR = 0xFF3370FF;
+
+    /** 行内 {@code code} 文字色。默认 {@code #C7384A}（豆包 / GitHub 风格红粉系）。 */
+    @ColorInt
+    private static final int BLOCK_INLINE_CODE_TEXT_COLOR = 0xFFC7384A;
+
+    /** 流式新增字符淡入开关。默认 {@code true}（打字机视觉）。 */
+    private static final boolean BLOCK_ALPHA_FADE = true;
+
+    // ---------- MarkdownConfig（默认 Builder 的 8 项静态开关） ----------
+    // 注意 streaming 由流式会话运行时驱动（appendMarkdown 时内部切换），不属于“样式”，不在此列。
+
+    /** 失败 / 打断态。默认 {@code false}（失败标记键由调用方管控）。 */
+    private static final boolean BLOCK_FAIL_OR_INTERRUPT = false;
+
+    /** 深度思考区。默认 {@code false}（chat-demo 的思考面板独立于 Markdown 渲染）。 */
+    private static final boolean BLOCK_DEEP_THINK_AREA = false;
+
+    /** 深度研究区。默认 {@code false}。 */
+    private static final boolean BLOCK_DEEP_RESEARCH_AREA = false;
+
+    /** 订阅会员色（豆包白色订阅主题）。默认 {@code false}（用 light 主题）。 */
+    private static final boolean BLOCK_SUBSCRIBED_COLOR = false;
+
+    /** 使用代码块样式（描边 + header 背景等）。默认 {@code true}。 */
+    private static final boolean BLOCK_USE_CODE_STYLE = true;
+
+    /** 代码块描边。默认 {@code true}。 */
+    private static final boolean BLOCK_CODE_BLOCK_STROKE = true;
+
+    /** 代码块 header 背景。默认 {@code true}。 */
+    private static final boolean BLOCK_CODE_BLOCK_HEADER_BACKGROUND = true;
+
+    /** 表格表头强调。默认 {@code true}。 */
+    private static final boolean BLOCK_TABLE_HEADER = true;
+
     private DefaultTheme() {
     }
 
@@ -588,6 +677,69 @@ public final class DefaultTheme {
             plugin.addExtension(2, '+', (configuration, props) ->
                     new UnderlineSpan());
         });
+    }
+
+    /**
+     * markwon-block 渲染主题：{@link MdTheme#light()} 的显式快照（= chat-demo 案例实际观感）。
+     *
+     * <p>值全部来自第九节的 {@code BLOCK_*} 常量 —— 想改就要在九节改，这里是「读」的地方。
+     * 也提供 {@code dark()} / {@code subscribed()} 预设（markwon-block 自带），
+     * 需要暗色聊天背景时直接在调用处换 {@code MdTheme.dark()}。
+     */
+    @NonNull
+    public static MdTheme mdTheme() {
+        return new MdTheme.Builder()
+                .name(BLOCK_THEME_NAME)
+                .textColor(BLOCK_TEXT_COLOR)
+                .secondaryTextColor(BLOCK_SECONDARY_TEXT_COLOR)
+                .linkColor(BLOCK_LINK_COLOR)
+                .codeBackground(BLOCK_CODE_BACKGROUND)
+                .codeHeaderBackground(BLOCK_CODE_HEADER_BACKGROUND)
+                .codeBorderColor(BLOCK_CODE_BORDER_COLOR)
+                .textBackground(BLOCK_TEXT_BACKGROUND)
+                .tableHeaderColor(BLOCK_TABLE_HEADER_COLOR)
+                .tableBorderColor(BLOCK_TABLE_BORDER_COLOR)
+                .typingCursorColor(BLOCK_TYPING_CURSOR_COLOR)
+                .inlineCodeTextColor(BLOCK_INLINE_CODE_TEXT_COLOR)
+                .alphaFade(BLOCK_ALPHA_FADE)
+                .build();
+    }
+
+    /**
+     * markwon-block 渲染配置：默认 {@code MarkdownConfig.Builder} 的显式快照。
+     *
+     * <p>{@code streaming} 不在此列表 —— 它是流式会话的运行时状态（整段渲染 = false，
+     * {@code appendMarkdown} 打字机期间由装配器内部切换为 true）。
+     */
+    @NonNull
+    public static MarkdownConfig markdownConfig() {
+        return new MarkdownConfig.Builder()
+                .failOrInterrupt(BLOCK_FAIL_OR_INTERRUPT)
+                .deepThinkArea(BLOCK_DEEP_THINK_AREA)
+                .deepResearchArea(BLOCK_DEEP_RESEARCH_AREA)
+                .subscribedColor(BLOCK_SUBSCRIBED_COLOR)
+                .codeStyle(BLOCK_USE_CODE_STYLE)
+                .codeBlockStroke(BLOCK_CODE_BLOCK_STROKE)
+                .codeBlockHeaderBackground(BLOCK_CODE_BLOCK_HEADER_BACKGROUND)
+                .tableHeader(BLOCK_TABLE_HEADER)
+                .build();
+    }
+
+    /**
+     * 把第九节的 markwon-block 样式作为<b>全局默认</b>注入 {@link MarkdownTextBlockView}
+     * （在 {@code Application#onCreate} 里调一次即可，之后布局里无需再配置）。
+     *
+     * <p>解析管线默认走 markwon-block 内置实现（core 全能力 + 表格 + 块间距），
+     * 与 chat-demo 一致、不做自定义。需要叠加语法高亮等额外插件时，改为注入
+     * {@link io.noties.markwon.block.render.MarkwonFactory}：
+     * <pre>
+     * MarkdownTextBlockView.setDefaultMarkwonFactory((context, theme, config) -&gt; { ... });
+     * </pre>
+     */
+    public static void applyBlockDefaults() {
+        MarkdownTextBlockView.setDefaultTheme(mdTheme());
+        MarkdownTextBlockView.setDefaultConfig(markdownConfig());
+        // MarkwonFactory 留 null = 内置管线；需要自定义时替换上面注释的静态方法。
     }
 
     // =====================================================================

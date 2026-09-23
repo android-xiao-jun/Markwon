@@ -84,6 +84,6 @@ $$
 
 ![百度](https:\/\/www.baidu.com\/img\/bd_logo.png)
 
-以下是Bilge为你生成的图片：
+以下是为你生成的图片：
 
 ![百度](https:\/\/www.baidu.com\/img\/bd_logo.png)

@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -74,6 +75,8 @@ public final class MarkdownBlockAssembler {
         for (int i = 0; i < newBlocks.size(); i++) {
             ensureChild(context, container, i, newBlocks.get(i), theme, config, viewFactory);
         }
+        // 1.1) 块间统一呼吸间距（首块贴顶，其余块顶部 8dp）
+        applyBlockSpacing(context, container);
         // 2) 回收多余子视图
         for (int i = container.getChildCount() - 1; i >= newBlocks.size(); i--) {
             final View v = container.getChildAt(i);
@@ -168,8 +171,28 @@ public final class MarkdownBlockAssembler {
             created = BlockViewFactory.createDefaultView(context, type, theme, config);
         }
         container.addView(created, index,
-                new ViewGroup.LayoutParams(
+                new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    /**
+     * 块间统一间距：第 0 块贴顶（top=0），其余块顶部 8dp。
+     * 每次装配后统一刷新，保证流式增块 / 块移除后间距仍然正确。
+     */
+    private static void applyBlockSpacing(@NonNull Context context, @NonNull ViewGroup container) {
+        final int spacing = Math.round(8f * context.getResources().getDisplayMetrics().density);
+        for (int i = 0; i < container.getChildCount(); i++) {
+            final View child = container.getChildAt(i);
+            final ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp instanceof LinearLayout.LayoutParams) {
+                final LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+                final int top = i == 0 ? 0 : spacing;
+                if (llp.topMargin != top) {
+                    llp.topMargin = top;
+                    child.setLayoutParams(llp);
+                }
+            }
+        }
     }
 
     private static boolean typeMatches(@NonNull View view, int type) {
