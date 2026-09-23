@@ -15,7 +15,7 @@ import io.noties.markwon.image.network.NetworkSchemeHandler;
 import io.noties.markwon.image.svg.SvgMediaDecoder;
 import io.noties.markwon.image.svg.SvgSupport;
 
-class AsyncDrawableLoaderBuilder {
+public class AsyncDrawableLoaderBuilder {
 
     ExecutorService executorService;
     final Map<String, SchemeHandler> schemeHandlers = new HashMap<>(3);
@@ -26,7 +26,7 @@ class AsyncDrawableLoaderBuilder {
 
     boolean isBuilt;
 
-    AsyncDrawableLoaderBuilder() {
+    public AsyncDrawableLoaderBuilder() {
 
         // @since 4.0.0
         // okay, let's add supported schemes at the start, this would be : data-uri and default network
@@ -46,36 +46,36 @@ class AsyncDrawableLoaderBuilder {
         defaultMediaDecoder = DefaultMediaDecoder.create();
     }
 
-    void executorService(@NonNull ExecutorService executorService) {
+    public void executorService(@NonNull ExecutorService executorService) {
         checkState();
         this.executorService = executorService;
     }
 
-    void addSchemeHandler(@NonNull SchemeHandler schemeHandler) {
+    public void addSchemeHandler(@NonNull SchemeHandler schemeHandler) {
         checkState();
         for (String scheme : schemeHandler.supportedSchemes()) {
             schemeHandlers.put(scheme, schemeHandler);
         }
     }
 
-    void addMediaDecoder(@NonNull MediaDecoder mediaDecoder) {
+    public void addMediaDecoder(@NonNull MediaDecoder mediaDecoder) {
         checkState();
         for (String type : mediaDecoder.supportedTypes()) {
             mediaDecoders.put(type, mediaDecoder);
         }
     }
 
-    void defaultMediaDecoder(@Nullable MediaDecoder mediaDecoder) {
+    public void defaultMediaDecoder(@Nullable MediaDecoder mediaDecoder) {
         checkState();
         this.defaultMediaDecoder = mediaDecoder;
     }
 
-    void removeSchemeHandler(@NonNull String scheme) {
+    public void removeSchemeHandler(@NonNull String scheme) {
         checkState();
         schemeHandlers.remove(scheme);
     }
 
-    void removeMediaDecoder(@NonNull String contentType) {
+    public void removeMediaDecoder(@NonNull String contentType) {
         checkState();
         mediaDecoders.remove(contentType);
     }
@@ -83,7 +83,7 @@ class AsyncDrawableLoaderBuilder {
     /**
      * @since 3.0.0
      */
-    void placeholderProvider(@NonNull ImagesPlugin.PlaceholderProvider placeholderDrawableProvider) {
+    public void placeholderProvider(@NonNull ImagesPlugin.PlaceholderProvider placeholderDrawableProvider) {
         checkState();
         this.placeholderProvider = placeholderDrawableProvider;
     }
@@ -91,13 +91,13 @@ class AsyncDrawableLoaderBuilder {
     /**
      * @since 3.0.0
      */
-    void errorHandler(@NonNull ImagesPlugin.ErrorHandler errorHandler) {
+    public void errorHandler(@NonNull ImagesPlugin.ErrorHandler errorHandler) {
         checkState();
         this.errorHandler = errorHandler;
     }
 
     @NonNull
-    AsyncDrawableLoader build() {
+    public AsyncDrawableLoader build() {
 
         checkState();
 

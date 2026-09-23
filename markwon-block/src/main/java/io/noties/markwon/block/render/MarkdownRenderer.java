@@ -37,6 +37,7 @@ import io.noties.markwon.AbstractMarkwonPlugin;
 import io.noties.markwon.Markwon;
 import io.noties.markwon.MarkwonVisitor;
 import io.noties.markwon.block.model.BlockContentExtractor;
+import io.noties.markwon.block.view.ImageBlockView;
 import io.noties.markwon.block.view.LinkHandler;
 import io.noties.markwon.core.CorePlugin;
 import io.noties.markwon.core.CoreProps;
@@ -45,6 +46,10 @@ import io.noties.markwon.core.spans.LastLineSpacingSpan;
 import io.noties.markwon.core.spans.LinkSpan;
 import io.noties.markwon.ext.tables.TablePlugin;
 import io.noties.markwon.ext.tables.TableTheme;
+import io.noties.markwon.image.AsyncDrawable;
+import io.noties.markwon.image.AsyncDrawableLoader;
+import io.noties.markwon.image.AsyncDrawableSpan;
+import io.noties.markwon.image.ImageSizeResolverDef;
 
 /**
  * Markdown 渲染器（复刻豆包 MarkwonRender + MarkwonProvider）。
@@ -108,9 +113,12 @@ public final class MarkdownRenderer {
             replaceLinks(ssb, theme.getLinkColor(), onLinkClick);
         }
 
-        // 5) 图片占位 Span 回填
+        // 5) 图片 Span 回填：已注册默认 loader 时走 AsyncDrawableSpan 真正加载，否则占位块
         if (!images.isEmpty()) {
-            applyImagePlaceholders(context, ssb, images, theme);
+            applyImagePlaceholders(
+                    context, ssb, images, theme,
+                    ImageBlockView.getDefaultAsyncDrawableLoader(),
+                    markwon.configuration().theme());
         }
 
         return new MarkdownContent(ssb, root, cap.hasLink, cap.hasTable, cap.hasBold, cap.hasImage);
@@ -424,7 +432,9 @@ public final class MarkdownRenderer {
             @NonNull Context context,
             @NonNull SpannableStringBuilder ssb,
             @NonNull List<ImageMark> images,
-            @NonNull MdTheme theme) {
+            @NonNull MdTheme theme,
+            @Nullable AsyncDrawableLoader loader,
+            @Nullable MarkwonTheme markwonTheme) {
         int from = 0;
         int idx = 0;
         while (idx < images.size()) {
@@ -433,9 +443,20 @@ public final class MarkdownRenderer {
                 break;
             }
             final ImageMark img = images.get(idx++);
-            ssb.setSpan(
-                    new ImagePlaceholderSpan(context, img.alt, img.url, theme),
-                    pos, pos + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (loader != null && markwonTheme != null) {
+                // 真正加载：AsyncDrawable + loader 管线（行内宽度在绘制时按可用宽度决定）
+                final AsyncDrawable drawable =
+                        new AsyncDrawable(img.url, loader, new ImageSizeResolverDef(), null);
+                ssb.setSpan(
+                        new AsyncDrawableSpan(
+                                markwonTheme, drawable, AsyncDrawableSpan.ALIGN_CENTER, true),
+                        pos, pos + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            } else {
+                // 未注册 loader：占位块兜底
+                ssb.setSpan(
+                        new ImagePlaceholderSpan(context, img.alt, img.url, theme),
+                        pos, pos + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
             from = pos + 1;
         }
     }

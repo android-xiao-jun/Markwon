@@ -37,7 +37,7 @@
 | `markwon-recycler-table` | `recycler-table` | `MarkwonAdapter.Entry` | 把表格渲染成原生 `TableLayout` |
 | `markwon-editor` | `editor` | 编辑器视图 | Markdown 编辑（**不是插件**） |
 | `markwon-ext-view` | — | — | 空壳，暂无源码 |
-| `markwon-block` | `block` | `MarkdownTextBlockView` `MarkdownBlockAssembler` `MdTheme` `MarkdownConfig` `MarkwonFactory` `BlockViewFactory` | 块级渲染：Markdown 按 Block 拆成独立 View（文本/代码/图片/分隔线），视图树差分复用 + 流式打字机。依赖 core + ext-tables。**[模块介绍](markwon-block/README.md)** |
+| `markwon-block` | `block` | `MarkdownTextBlockView` `MarkdownBlockAssembler` `MdTheme` `MarkdownConfig` `MarkwonFactory` `BlockViewFactory` | 块级渲染：Markdown 按 Block 拆成独立 View（文本/代码/图片/分隔线），视图树差分复用 + 流式打字机。依赖 core + ext-tables + image。**[模块介绍](markwon-block/README.md)** |
 | `app-sample` | — | `MainActivity` `DefaultTheme` | 案例工程：插件全家桶演示，**[详见文档](app-sample/README.md)** |
 | `chat-demo` | — | `ChatActivity` `MarkdownTextBlockView` | 案例工程：独立 AI 聊天 App，markwon-block 分块渲染落地，**[详见文档](chat-demo/README.md)** |
 
@@ -222,7 +222,7 @@ dependencies {
     implementation 'com.github.android-xiao-jun.markwon-ext:recycler:b7730ffa9f'
     implementation 'com.github.android-xiao-jun.markwon-ext:recycler-table:b7730ffa9f'
     implementation 'com.github.android-xiao-jun.markwon-ext:editor:b7730ffa9f'
-    implementation 'com.github.android-xiao-jun.markwon-ext:block:b7730ffa9f'   // 块级渲染（自动带上 core + ext-tables）
+    implementation 'com.github.android-xiao-jun.markwon-ext:block:b7730ffa9f'   // 块级渲染（自动带上 core + ext-tables + image）
 }
 ```
 

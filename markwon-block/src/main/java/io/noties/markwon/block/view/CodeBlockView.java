@@ -21,7 +21,9 @@ import androidx.annotation.Nullable;
 
 import java.util.Map;
 
+import io.noties.markwon.block.R;
 import io.noties.markwon.block.model.Block;
+import io.noties.markwon.block.render.CodeBlockCopyListener;
 import io.noties.markwon.block.render.MarkdownConfig;
 import io.noties.markwon.block.render.MdTheme;
 
@@ -30,25 +32,98 @@ import io.noties.markwon.block.render.MdTheme;
  *
  * <p>结构：header（语言 + 复制按钮）+ 横向滚动代码区；
  * 行号（3 位 + {@link ForegroundColorSpan} 次要色）、MONOSPACE 13sp。
+ *
+ * <p>复制按钮点击可被外部接管：全局默认
+ * {@link #setDefaultCopyClickListener(CodeBlockCopyListener)} 或实例级
+ * {@link #setOnCopyClickListener(CodeBlockCopyListener)}。语义见
+ * {@link CodeBlockCopyListener}：返回 true 外部处理（内部只改按钮状态）、
+ * false 拦截、未设置时本地默认复制。
  */
 public class CodeBlockView extends AbsBlockView implements ViewRecycler {
 
     private static final int ROUND = 8;
     private static final long COPY_RESET_MS = 1200L;
 
+    /** 全局默认复制回调（RecyclerView 复用场景建议用它注册） */
+    @Nullable
+    private static CodeBlockCopyListener sCopyListener;
+
+    /**
+     * 注册全局默认复制回调。未设置时复制按钮走本地默认（剪贴板 + 按钮状态）；
+     * 已设置时每次点击回调三态语义见 {@link CodeBlockCopyListener}。
+     */
+    public static void setDefaultCopyClickListener(@Nullable CodeBlockCopyListener listener) {
+        sCopyListener = listener;
+    }
+
+    /** 全局默认文案（null = 回退 strings.xml，随 locale 切换），可覆盖多语言 */
+    @Nullable
+    private static String sCopyText;
+    @Nullable
+    private static String sCopiedText;
+    @Nullable
+    private static String sDefaultLanguageText;
+
+    /** 设置全局复制按钮文案。传 null 恢复 strings.xml 默认（支持多语言资源覆盖）。 */
+    public static void setDefaultCopyText(@Nullable String text) {
+        sCopyText = text;
+    }
+
+    /** 设置全局复制成功反馈文案。传 null 恢复 strings.xml 默认。 */
+    public static void setDefaultCopiedText(@Nullable String text) {
+        sCopiedText = text;
+    }
+
+    /** 设置全局代码块默认语言标题（未标注语言时用）。传 null 恢复 strings.xml 默认。 */
+    public static void setDefaultLanguageText(@Nullable String text) {
+        sDefaultLanguageText = text;
+    }
+
     private final MdTheme theme;
     private final MarkdownConfig config;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    /** 实例级复制回调，优先于全局默认 */
+    @Nullable
+    private CodeBlockCopyListener copyListener;
+
+    /**
+     * 设置实例级复制回调（优先于 {@link #setDefaultCopyClickListener} 的全局默认）。
+     * 传 null 可清除，回落本地默认。
+     */
+    public void setOnCopyClickListener(@Nullable CodeBlockCopyListener listener) {
+        this.copyListener = listener;
+    }
 
     private TextView headerText;
     private TextView copyButton;
     private TextView codeText;
     private String code = "";
+    private String language = "";
+
+    /** 文案优先级：外部静态设置 > strings.xml 资源（随 locale，支持多语言覆盖） */
+    @NonNull
+    private String copyText() {
+        final String t = sCopyText;
+        return t != null ? t : getContext().getString(R.string.markwon_block_code_copy);
+    }
+
+    @NonNull
+    private String copiedText() {
+        final String t = sCopiedText;
+        return t != null ? t : getContext().getString(R.string.markwon_block_code_copied);
+    }
+
+    @NonNull
+    private String defaultLanguageText() {
+        final String t = sDefaultLanguageText;
+        return t != null ? t : getContext().getString(R.string.markwon_block_code_default_language);
+    }
 
     private final Runnable resetCopy = new Runnable() {
         @Override
         public void run() {
-            copyButton.setText("复制");
+            copyButton.setText(copyText());
             copyButton.setTextColor(theme.getSecondaryTextColor());
         }
     };
@@ -94,7 +169,7 @@ public class CodeBlockView extends AbsBlockView implements ViewRecycler {
         header.addView(headerText, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
         copyButton = new TextView(getContext());
-        copyButton.setText("复制");
+        copyButton.setText(copyText());
         copyButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
         copyButton.setTextColor(theme.getSecondaryTextColor());
         copyButton.setGravity(Gravity.CENTER);
@@ -130,8 +205,26 @@ public class CodeBlockView extends AbsBlockView implements ViewRecycler {
     }
 
     private void onCopyClick() {
+        // 已设置的实例回调优先于全局默认
+        final CodeBlockCopyListener listener =
+                copyListener != null ? copyListener : sCopyListener;
+        if (listener != null) {
+            final boolean handled = listener.onCopyClick(code, language);
+            if (!handled) {
+                return; // 拦截：不复制、不改按钮状态
+            }
+            // true：外部已接管复制，内部仅更新按钮状态
+            showCopiedFeedback();
+            return;
+        }
+        // 未设置 listener：本地默认复制
         LinkHandler.copyToClipboard(getContext(), code);
-        copyButton.setText("已复制");
+        showCopiedFeedback();
+    }
+
+    /** 复制后的按钮反馈（“已复制”绿字 + 定时复位），与复制行为解耦 */
+    private void showCopiedFeedback() {
+        copyButton.setText(copiedText());
         copyButton.setTextColor(Color.parseColor("#1BB24E"));
         mainHandler.removeCallbacks(resetCopy);
         mainHandler.postDelayed(resetCopy, COPY_RESET_MS);
@@ -144,8 +237,9 @@ public class CodeBlockView extends AbsBlockView implements ViewRecycler {
         }
         final Block.CodeBlock cb = (Block.CodeBlock) block;
         code = cb.getCode() == null ? "" : cb.getCode();
-        final String language = cb.getLanguage();
-        headerText.setText(language == null || language.trim().isEmpty() ? "代码" : language.trim());
+        language = cb.getLanguage();
+        headerText.setText(language == null || language.trim().isEmpty()
+                ? defaultLanguageText() : language.trim());
         bindCodeText();
     }
 
@@ -175,7 +269,7 @@ public class CodeBlockView extends AbsBlockView implements ViewRecycler {
     public void onViewRecycled() {
         mainHandler.removeCallbacks(resetCopy);
         if (copyButton != null) {
-            copyButton.setText("复制");
+            copyButton.setText(copyText());
             copyButton.setTextColor(theme.getSecondaryTextColor());
         }
         if (codeText != null) {

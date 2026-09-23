@@ -26,6 +26,9 @@ dependencies {
     // 块渲染依赖 core（解析/渲染管线）与 ext-tables（表格）
     api project(':markwon-core')
     api project(':markwon-ext-tables')
+    // 图片加载默认走 markwon-image（ImageBlockView 的 AsyncDrawableLoader 默认实现；
+    // markwon-image-glide 由使用方可选引入，把 loader 传入块视图即可）
+    api project(':markwon-image')
 
     deps.with {
         implementation it['x-annotations']

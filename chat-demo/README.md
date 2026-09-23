@@ -8,7 +8,9 @@ OkHttp + Retrofit 直连 DeepSeek，SSE 流式输出，AI 回复交给 `Markdown
 
 Agent 模式界面（思考 → 工具 → 回复 交替展示 / 工具清单）：
 
-![Agent 查询闹钟](../images/UI案例图.png)　![Agent 工具列表](../images/UI案例图2.png)
+![Agent 查询闹钟](../images/UI案例图.png)
+![Agent 工具列表](../images/UI案例图2.png)
+![Agent 工具列表](../images/UI案例图片展示.png)
 
 ---
 

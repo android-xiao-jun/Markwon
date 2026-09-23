@@ -21,6 +21,7 @@ import io.noties.markwon.block.render.StreamSpans;
 import android.widget.TextView;
 import io.noties.markwon.ext.tables.TableRowSpan;
 import io.noties.markwon.ext.tables.TableScrollTouchListener;
+import io.noties.markwon.image.AsyncDrawableScheduler;
 
 /**
  * 文本块视图（复刻豆包 CustomMarkdownTextView）。
@@ -126,6 +127,10 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
 
         setText(ssb, TextView.BufferType.SPANNABLE);
 
+        // 图片加载接线：AsyncDrawableScheduler 扫描文本中的 AsyncDrawableSpan 并 attach
+        // （attach 即触发 loader.load），加载完成后 invalidator 重新 setText 收敛行高
+        AsyncDrawableScheduler.schedule(this);
+
         if (hasTable) {
             // 直接 setText 绕过 Markwon.setText → TablePlugin.afterSetText 不触发，
             // 必须手动挂载表格横向滚动触控（幂等：GestureRouter 按 key 覆盖）
@@ -180,6 +185,8 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
     @Override
     public void onViewRecycled() {
         stopEffects();
+        // 解除图片 attach（触发 loader.cancel），避免复用视图携带旧请求
+        AsyncDrawableScheduler.unschedule(this);
         setText("");
         markdownWidth = 0;
         hasTable = false;
@@ -189,6 +196,8 @@ public class CustomMarkdownTextView extends TextView implements ViewRecycler {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         stopEffects();
+        // 兜底：attach 监听器已处理，这里再显式解除（RecyclerView 复用前 detach 场景）
+        AsyncDrawableScheduler.unschedule(this);
     }
 
     private void stopEffects() {

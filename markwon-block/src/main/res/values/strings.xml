@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 代码块复制按钮文案。
+         宿主可直接在自身 strings.xml 中以同名 key 覆盖（如 values-en/ 等），
+         或通过 CodeBlockView.setDefaultCopyText(...) 等静态配置注入。 -->
+    <string name="markwon_block_code_copy">复制</string>
+    <string name="markwon_block_code_copied">已复制</string>
+    <string name="markwon_block_code_default_language">代码</string>
+</resources>

@@ -91,6 +91,59 @@ markdownView.appendMarkdown(chunkText, linkClickListener, true)
 markdownView.renderMarkdown(content, url -> { /* 打开链接 / 拦截 */ });
 ```
 
+### 3.5 图片加载（markwon-image 默认，可切 markwon-image-glide）
+
+`ImageBlockView` 复用 markwon 原框架的异步加载管线（`AsyncDrawable` + `AsyncDrawableLoader`）：
+
+- **未设置 loader**：渲染为可点击占位块（🖼 + alt + url），点击回调业务方；
+- **默认加载**（markwon-image）：`AsyncDrawableLoaderBuilder` 内置 data-uri / network scheme handler
+  与 SVG / GIF / DefaultMediaDecoder，开箱即用（HTTP 图片需自备 okhttp 网络栈，见依赖说明）：
+
+```java
+// Application 里设一次即可全局生效（独立行图片 ImageBlockView 与行内图片共用此 loader）
+ImageBlockView.setDefaultAsyncDrawableLoader(ImageBlockView.defaultMarkwonLoader());
+```
+
+- **动态切换 markwon-image-glide**：把 `GlideImagesPlugin` 装配进 Markwon 后，取出 loader 传入
+  （无需改块视图，运行时替换 loader 即切换）：
+
+```java
+Markwon markwon = Markwon.builder(context)
+        .usePlugin(GlideImagesPlugin.create(Glide.with(context)))
+        .build();
+ImageBlockView.setDefaultAsyncDrawableLoader(
+        markwon.configuration().asyncDrawableLoader());
+```
+
+- 加载中显示圆角灰底（`getResources().getDisplayMetrics().density` 自适应），完成后替换为图片并按容器宽等比伸缩；
+  失败时保持灰底（可配 `ImagesPlugin.Builder.placeholderProvider / errorHandler` 加载占位与失败样式）。
+- **行内图片**：同一 loader 下，行内 `![](url)` 也会生成 `AsyncDrawableSpan` 真正加载
+  （由 `AsyncDrawableScheduler` 在 setText 后 attach 触发，加载完成后自动收敛行高）；
+  未注册 loader 时行内图片回退灰底占位块。
+
+### 3.6 外部交互回调（复制 / 图片点击）
+
+除链接外，还有两个交互点可被外部接管，均支持「全局默认 + 实例覆盖」两级注册：
+
+| 回调 | 注册方式 | 语义 |
+| --- | --- | --- |
+| 代码块复制 `CodeBlockCopyListener` | `CodeBlockView.setDefaultCopyClickListener(...)` / `setOnCopyClickListener(...)` | 返回 `true`：外部处理复制，内部只把按钮切「已复制」+ 定时复位；返回 `false`：拦截本次点击（不复制、不改状态）；**未设置**：本地 `LinkHandler.copyToClipboard` + 按钮状态 |
+| 图片占位点击 `OnImageClick` | `ImageBlockView.setDefaultOnImageClick(...)` / `setOnImageClick(...)` | `void onClick(url, alt)`；未设置时占位块点击无动作 |
+
+```java
+// 全局默认（Application 里设一次；RecyclerView 复用场景建议走这里）
+CodeBlockView.setDefaultCopyClickListener((code, language) -> {
+    if (blocked) return false;            // 拦截
+    myCopy(code, language);               // 外部接管复制
+    return true;                          // 内部只更新按钮状态
+});
+ImageBlockView.setDefaultOnImageClick((url, alt) -> openViewer(url, alt));
+```
+
+> 提示：`MarkdownTextBlockView` 是容器，实例级 setter 需要在拿到底层视图后调用
+> （自定义 `BlockViewFactory` 创建 `CodeBlockView` / `ImageBlockView` 时顺手设置）；
+> 不依赖底层视图时直接用全局默认即可。
+
 ---
 
 ## 4. 主题样式配置
