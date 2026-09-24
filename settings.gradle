@@ -42,4 +42,5 @@ include ':markwon-core',
         ':markwon-block'
 
 //include ':app-sample'
+//include ':chat-demo'
 //include ':sample-utils:processor'
