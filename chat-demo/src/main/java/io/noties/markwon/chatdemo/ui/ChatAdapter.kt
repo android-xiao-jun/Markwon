@@ -26,6 +26,7 @@ import io.noties.markwon.chatdemo.util.AppLog
 import io.noties.markwon.chatdemo.viewmodel.ChatMessageItem
 import io.noties.markwon.chatdemo.viewmodel.ChatTrailSegment
 import io.noties.markwon.chatdemo.viewmodel.ChatViewModel
+import java.io.File
 
 /**
  * 聊天消息列表 Adapter（手写，无 DataBinding）
@@ -38,9 +39,12 @@ import io.noties.markwon.chatdemo.viewmodel.ChatViewModel
  * AI 轨迹渲染（[ChatTrailSegment]）：思考段面板与工具步骤卡片按模型输出顺序交替挂载
  * 到 [ll_trail_container]，多轮 Agent 显示为「思考 → 工具 → 思考 → 工具 → 文本」的连贯顺序；
  * 流式时思考文本增量 append（不整块重绘），工具卡片状态变化原位更新。
+ * 工具产出的图片（[AgentStep.imagePath]，如二维码）在步骤卡片内联展示，附本地路径与「保存到相册」。
  */
 class ChatAdapter(
-    private val viewModel: ChatViewModel
+    private val viewModel: ChatViewModel,
+    /** 保存工具生成图片到系统相册（由 Activity 处理权限申请与 IO 写入） */
+    private val onSaveImage: ((String) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
@@ -397,13 +401,44 @@ class ChatAdapter(
                     if (step.isFailed()) android.R.color.holo_red_dark else android.R.color.darker_gray
                 )
             )
-            if (step.summary.isNotBlank()) {
+            // 工具产出的图片（如二维码）：展示成功时省略文字摘要（路径已单独展示）
+            val showImage = bindStepImage(card, step)
+            if (step.summary.isNotBlank() && !showImage) {
                 tvSummary.visibility = View.VISIBLE
                 tvSummary.text = step.summary
             } else {
                 tvSummary.visibility = View.GONE
             }
             return card
+        }
+
+        /**
+         * 绑定工具产出图片（[AgentStep.imagePath]）：内联展示缩略图 + 本地路径 + 保存到相册按钮。
+         * @return 是否展示成功；无图片标记/文件已被清理/解码失败时返回 false，回退展示文字摘要
+         */
+        private fun bindStepImage(card: View, step: AgentStep): Boolean {
+            val ivImage = card.findViewById<ImageView>(R.id.iv_step_image)
+            val llActions = card.findViewById<LinearLayout>(R.id.ll_step_image_actions)
+            val tvPath = card.findViewById<TextView>(R.id.tv_step_image_path)
+            val btnSave = card.findViewById<TextView>(R.id.btn_step_save_gallery)
+
+            val path = step.imagePath
+            if (path.isNullOrEmpty() || !File(path).exists()) return false
+            val thumbPx = dp(itemView.context, MAX_THUMB_DP.toFloat())
+            val bitmap = FileHelper.decodeThumb(path, thumbPx) ?: return false
+            ivImage.setImageBitmap(bitmap)
+            ivImage.visibility = View.VISIBLE
+            llActions.visibility = View.VISIBLE
+            tvPath.text = path
+            btnSave.setOnClickListener {
+                val save = onSaveImage
+                if (save != null) {
+                    save(path)
+                } else {
+                    Toast.makeText(itemView.context, "当前页面不支持保存到相册", Toast.LENGTH_SHORT).show()
+                }
+            }
+            return true
         }
 
         /**

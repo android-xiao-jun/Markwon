@@ -77,6 +77,12 @@ dependencies {
     // ============ 协程 ============
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.4.2'
 
+    // ============ PDF 文本提取（Word/Excel/PPT 为 OOXML 容器，由本地零依赖解析器处理） ============
+    implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
+
+    // ============ 二维码生成/识别（Agent 工具，纯 Java 实现，无 Android 依赖） ============
+    implementation 'com.google.zxing:core:3.3.3'
+
     // ============ markwon：AI 回复 Markdown 渲染（整段 + 流式增量） ============
     implementation project(':markwon-core')
     implementation project(':markwon-block')

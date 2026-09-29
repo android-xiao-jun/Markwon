@@ -21,6 +21,9 @@ class AgentStep(
     /** 工具执行结果（截断用于 UI 展示） */
     var summary: String = ""
 
+    /** 工具产出的内联图片本地路径（如生成的二维码，供聊天页展示 + 保存相册） */
+    var imagePath: String? = null
+
     /** 工具展示标签 */
     fun statusText(): String = when (status) {
         STATUS_RUNNING -> "执行中…"

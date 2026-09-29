@@ -42,7 +42,10 @@ object ToolRegistry {
             // ===== 剪贴板 / 拨号（无需权限）=====
             ReadClipboardTool(),
             WriteClipboardTool(),
-            DialPhoneTool()
+            DialPhoneTool(),
+            // ===== 二维码：生成（写工作区）/ 识别（本地解码，结果含图片标记供 UI 内联展示）=====
+            GenerateQrCodeTool(),
+            DecodeQrCodeTool()
         )
     }
 

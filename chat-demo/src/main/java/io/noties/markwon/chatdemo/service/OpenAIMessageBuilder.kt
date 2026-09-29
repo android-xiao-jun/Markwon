@@ -3,6 +3,7 @@ package io.noties.markwon.chatdemo.service
 import io.noties.markwon.chatdemo.bean.AIChatMessage
 import io.noties.markwon.chatdemo.bean.Attachment
 import io.noties.markwon.chatdemo.util.AppLog
+import io.noties.markwon.chatdemo.util.FileTextExtractor
 import okhttp3.MediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
@@ -31,14 +32,8 @@ object OpenAIMessageBuilder {
     /** 单附件图片最大可发送体积 */
     const val MAX_IMAGE_BYTES = 5 * 1024 * 1024L
 
-    /** 单附件文件文本最多附带字符数 */
+    /** 单附件文件文本最多附带字符数（文本直读与 PDF/Office/压缩包解析结果同用此上限） */
     const val MAX_FILE_TEXT_LENGTH = 8000
-
-    /** 可直接读取文本内容传给模型的文件后缀白名单（其余二进制格式仅传说明） */
-    val TEXT_FILE_EXTS = setOf(
-        "txt", "md", "json", "xml", "kt", "java", "py", "js", "ts", "html", "css",
-        "csv", "log", "yml", "yaml", "gradle", "properties", "sql", "c", "cpp", "h", "sh", "bat"
-    )
 
     /**
      * 基础系统提示词（普通聊天 / Agent 模式共用）：
@@ -70,8 +65,9 @@ object OpenAIMessageBuilder {
 ## 附件约定
 用户消息中可能包含客户端注入的以下片段，均有明确含义：
 - 【附件文件 xxx 内容】：用户上传文件的真实内容，请基于它回答
+  （文本/代码文件直接读取；PDF 提取文本层；Word/Excel/PPT 解析出文本与表格；压缩包提供条目清单与内嵌文本）
 - 【图片附件：xxx（不支持图像输入）】：当前模型无法查看该图片，请如实说明并建议切换支持视觉的模型，不要假装看到了图片
-- 【附件文件 xxx：读取失败/暂不支持解析】：文件内容不可用，请说明情况并建议改传文本类文件
+- 【附件文件 xxx：读取失败/暂不支持解析】：文件内容不可用，请说明情况；旧版 Office（doc/xls/ppt）等二进制格式建议用 Office/WPS 另存为 docx/xlsx/pptx 或转 txt 后再传
 
 ## 基本原则
 - 不确定的事实要明确说明不确定，不要编造
@@ -85,7 +81,7 @@ object OpenAIMessageBuilder {
     const val AGENT_SYSTEM_PROMPT = """
 ## 工具使用（当前会话为 Agent 模式，可调用手机端工具）
 可用工具覆盖：设备/系统信息、App 信息、屏幕/存储/内存/电池状态、清理缓存、蓝牙设备列表、
-公共目录文件读取/写入/搜索、闹钟与定时器、联系人、剪贴板读写、拨号。
+公共目录文件读取（文本/PDF/Word/Excel/压缩包解析）/写入/搜索、闹钟与定时器、联系人、剪贴板读写、拨号。
 - 涉及手机真实状态或本地操作的请求（如"电量还剩多少""帮我设个 8 点的闹钟"），必须调用对应工具
   获取或执行，严禁凭想象回答或编造结果
 - 一次回复中可按需调用多个工具；与手机无关的常识问题正常回答即可，不要强行调用工具
@@ -97,11 +93,19 @@ object OpenAIMessageBuilder {
 
     /**
      * 构造普通聊天请求体（OpenAI 格式）
-     * @param messages 对话消息（user/assistant）
-     * @param model    当前模型名（如 deepseek-chat）
-     * @param tools    工具 schema（null 则不带 tools）
+     * @param messages   对话消息（user/assistant）
+     * @param model      当前模型名（如 deepseek-flash）
+     * @param tools      工具 schema（null 则不带 tools）
+     * @param thinking   思考开关（开启时随请求携带，见 [appendThinking]）
+     * @param webSearch  联网搜索开关（开启时随请求携带，见 [appendWebSearch]）
      */
-    fun build(messages: List<AIChatMessage>, model: String, tools: JSONArray?): RequestBody {
+    fun build(
+        messages: List<AIChatMessage>,
+        model: String,
+        tools: JSONArray?,
+        thinking: Boolean = false,
+        webSearch: Boolean = false
+    ): RequestBody {
         val startNs = System.nanoTime()
         val messagesArray = JSONArray()
         messagesArray.put(systemMessage(isAgent = false))
@@ -112,8 +116,8 @@ object OpenAIMessageBuilder {
                 put("content", buildMessageContent(msg))
             })
         }
-        val body = toJsonBody(buildBody(messagesArray, model, tools))
-        AppLog.d(AppLog.TAG_BUILD, "build(chat): model=$model, msgs=${messages.size}, tools=${tools?.length() ?: 0}, body=${AppLog.sizeText(body.contentLength().coerceAtLeast(0))}, ${AppLog.elapsedMs(startNs)}")
+        val body = toJsonBody(buildBody(messagesArray, model, tools, thinking, webSearch))
+        AppLog.d(AppLog.TAG_BUILD, "build(chat): model=$model, msgs=${messages.size}, tools=${tools?.length() ?: 0}, thinking=$thinking, webSearch=$webSearch, body=${AppLog.sizeText(body.contentLength().coerceAtLeast(0))}, ${AppLog.elapsedMs(startNs)}")
         return body
     }
 
@@ -122,8 +126,16 @@ object OpenAIMessageBuilder {
     /**
      * 构造 Agent 请求体（多轮上下文，含 tool 消息 / assistant tool_calls）
      * @param messages Agent 多轮消息（user/assistant/tool）
+     * @param thinking 思考开关（同 [build]）
+     * @param webSearch 联网搜索开关（同 [build]）
      */
-    fun buildAgent(messages: List<AgentMessage>, model: String, tools: JSONArray?): RequestBody {
+    fun buildAgent(
+        messages: List<AgentMessage>,
+        model: String,
+        tools: JSONArray?,
+        thinking: Boolean = false,
+        webSearch: Boolean = false
+    ): RequestBody {
         val startNs = System.nanoTime()
         val messagesArray = JSONArray()
         messagesArray.put(systemMessage(isAgent = true))
@@ -163,8 +175,8 @@ object OpenAIMessageBuilder {
                 })
             }
         }
-        val body = toJsonBody(buildBody(messagesArray, model, tools))
-        AppLog.d(AppLog.TAG_BUILD, "build(agent): model=$model, msgs=${messages.size}(tool=${messages.count { it.role == "tool" }}), tools=${tools?.length() ?: 0}, body=${AppLog.sizeText(body.contentLength().coerceAtLeast(0))}, ${AppLog.elapsedMs(startNs)}")
+        val body = toJsonBody(buildBody(messagesArray, model, tools, thinking, webSearch))
+        AppLog.d(AppLog.TAG_BUILD, "build(agent): model=$model, msgs=${messages.size}(tool=${messages.count { it.role == "tool" }}), tools=${tools?.length() ?: 0}, thinking=$thinking, webSearch=$webSearch, body=${AppLog.sizeText(body.contentLength().coerceAtLeast(0))}, ${AppLog.elapsedMs(startNs)}")
         return body
     }
 
@@ -176,7 +188,13 @@ object OpenAIMessageBuilder {
         put("content", if (isAgent) SYSTEM_PROMPT + AGENT_SYSTEM_PROMPT else SYSTEM_PROMPT)
     }
 
-    private fun buildBody(messagesArray: JSONArray, model: String, tools: JSONArray?): String {
+    private fun buildBody(
+        messagesArray: JSONArray,
+        model: String,
+        tools: JSONArray?,
+        thinking: Boolean,
+        webSearch: Boolean
+    ): String {
         val body = JSONObject().apply {
             put("model", model)
             put("messages", messagesArray)
@@ -185,7 +203,44 @@ object OpenAIMessageBuilder {
         if (tools != null && tools.length() > 0) {
             body.put("tools", tools)
         }
+        appendThinking(body, thinking)
+        appendWebSearch(body, webSearch)
         return body.toString()
+    }
+
+    /**
+     * 思考开关（仅在开启时携带；关闭时不传，走各网关默认行为）：
+     * - 官方网关（deepseek.com，V4 系列默认开启思考）：`thinking: {"type": "enabled"}`
+     * - 兼容网关（硅基流动 / 百炼等）：`enable_thinking: true`（OpenAI SDK 需经 extra_body 传入）
+     */
+    private fun appendThinking(body: JSONObject, enabled: Boolean) {
+        if (!enabled) return
+        if (isDeepSeekOfficialGateway()) {
+            body.put("thinking", JSONObject().apply { put("type", "enabled") })
+        } else {
+            body.put("enable_thinking", true)
+        }
+    }
+
+    /**
+     * 联网搜索开关（仅在开启时携带）：
+     * `enable_search` + `web_search_options`（兼容网关生效；官方网关会忽略这两个字段、不报错，
+     * 官方 Chat Completions API 本身不提供联网搜索能力）
+     */
+    private fun appendWebSearch(body: JSONObject, enabled: Boolean) {
+        if (!enabled) return
+        body.put("enable_search", true)
+        body.put("web_search_options", JSONObject().apply {
+            put("enable", true)
+            put("search_source", "lite")
+            put("user_location", JSONObject().apply {
+                put("type", "approximate")
+                put("country", "CN")
+                put("region", "Guangdong")
+                put("city", "Shenzhen")
+                put("timezone", "Asia/Shanghai")
+            })
+        })
     }
 
     /**
@@ -195,8 +250,8 @@ object OpenAIMessageBuilder {
      *
      * 兜底策略（保证 AI 总能收到附件信息并回复）：
      * - 图片 + DeepSeek 官方（无视觉模型）→ 文本说明占位，不发 image_url（否则 400）
-     * - 文本类文件 → 读取内容作为文本片段
-     * - 二进制/PDF 等不可解析文件 → 明确的占位说明（文件名/类型/大小）
+     * - 其他文件 → 统一交 [FileTextExtractor] 分格式解析（文本直读 / PDF 文本层 / docx·xlsx·pptx / 压缩包清单）
+     * - 不可解析（旧版 Office 等二进制）→ 明确的占位说明（文件名/类型/大小/替代建议）
      */
     fun buildMessageContent(msg: AIChatMessage): Any {
         // 1. 收集文本片段（消息正文 + 文件内容/占位说明）
@@ -226,20 +281,7 @@ object OpenAIMessageBuilder {
                         texts.add("【图片附件：${att.fileName ?: "图片"}。本地文件读取失败或超过 ${MAX_IMAGE_BYTES / (1024 * 1024)}MB，无法提供】")
                 }
             } else {
-                val ext = (att.fileName ?: "").substringAfterLast('.', "").toLowerCase()
-                if (ext in TEXT_FILE_EXTS) {
-                    val fileContent = readLocalFileText(att)
-                    if (fileContent != null) {
-                        texts.add("【附件文件 ${att.fileName ?: "未命名"} 内容】\n$fileContent")
-                    } else {
-                        texts.add("【附件文件 ${att.fileName ?: "未命名"}：读取失败或不存在】")
-                    }
-                } else {
-                    texts.add(
-                        "【附件文件 ${att.fileName ?: "未命名"}（${att.displayType} 类型，大小 ${formatSize(att.size)}）。" +
-                            "该格式暂不支持解析为文本内容】"
-                    )
-                }
+                texts.add(buildFilePart(att))
             }
         }
 
@@ -311,25 +353,25 @@ object OpenAIMessageBuilder {
     }
 
     /**
-     * 读取本地文件文本内容（截断 [MAX_FILE_TEXT_LENGTH] 保护上下文）。
-     * 非文本文件（二进制）读取异常时返回 null。
+     * 非图片附件的文本片段：统一走 [FileTextExtractor] 按格式分派
+     * （文本直读 / PDF 文本层 / docx·xlsx·pptx 解析 / 压缩包清单），
+     * 不可解析或读取失败时给出明确的占位说明（保证 AI 总能收到附件信息）。
      */
-    private fun readLocalFileText(att: Attachment): String? {
+    private fun buildFilePart(att: Attachment): String {
+        val fileName = att.fileName ?: "未命名"
         val localPath = att.localPath
-        if (localPath.isNullOrEmpty()) return null
-        return try {
-            val file = File(localPath)
-            if (!file.exists()) {
-                AppLog.w(AppLog.TAG_ATTACH, "file not found: ${att.fileName}")
-                return null
+        if (localPath.isNullOrEmpty()) {
+            return "【附件文件 $fileName：本地文件不存在（地址为空）】"
+        }
+        return when (val result = FileTextExtractor.extract(File(localPath), MAX_FILE_TEXT_LENGTH)) {
+            is FileTextExtractor.Result.Text -> {
+                val suffix = if (result.truncated) "（内容超长，已截断至 $MAX_FILE_TEXT_LENGTH 字符）" else ""
+                "【附件文件 $fileName 内容$suffix】\n${result.content}"
             }
-            val text = file.readText(Charsets.UTF_8)
-            val clipped = if (text.length > MAX_FILE_TEXT_LENGTH) text.substring(0, MAX_FILE_TEXT_LENGTH) else text
-            AppLog.d(AppLog.TAG_ATTACH, "file read: ${att.fileName}, ${text.length} chars${if (clipped.length < text.length) "(截断至 $MAX_FILE_TEXT_LENGTH)" else ""}")
-            clipped
-        } catch (e: Exception) {
-            AppLog.w(AppLog.TAG_ATTACH, "readLocalFileText error: ${e.message}")
-            null
+            is FileTextExtractor.Result.Unsupported ->
+                "【附件文件 $fileName（${att.displayType} 类型，大小 ${formatSize(att.size)}）：${result.reason}】"
+            is FileTextExtractor.Result.Failed ->
+                "【附件文件 $fileName：读取失败（${result.reason}）】"
         }
     }
 

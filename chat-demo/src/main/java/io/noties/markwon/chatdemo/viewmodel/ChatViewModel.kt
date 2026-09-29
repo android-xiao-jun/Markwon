@@ -19,8 +19,11 @@ import io.noties.markwon.chatdemo.service.AgentToolCall
 import io.noties.markwon.chatdemo.service.DeepSeekAIService
 import io.noties.markwon.chatdemo.service.IAIService
 import io.noties.markwon.chatdemo.service.IAIService.AIStreamEvent
+import io.noties.markwon.chatdemo.service.ModelProfile
 import io.noties.markwon.chatdemo.service.OpenAIMessageBuilder
+import io.noties.markwon.chatdemo.tool.ToolImageProtocol
 import io.noties.markwon.chatdemo.tool.ToolRegistry
+import io.noties.markwon.chatdemo.tool.ToolSessionState
 import io.noties.markwon.chatdemo.util.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +40,7 @@ import java.util.UUID
  * 聊天页面 ViewModel（chat-demo 独立实现）
  *
  * 移植自 doslas AIChatViewModel，裁剪了：
- * - 登录态 / VIP / 图片创作 / 联网搜索 / 追问问题 / TTS 等全部业务；
+ * - 登录态 / VIP / 图片创作 / 追问问题 / TTS 等全部业务；
  * - 服务器同步（无 serverMsgId 链路），消息纯本地 Room 持久化。
  *
  * 核心流程：
@@ -60,6 +63,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         private const val KEY_API_KEY = "api_key"
         private const val KEY_MODEL = "model"
         private const val KEY_AGENT = "agent_enabled"
+        /** 思考开关（随请求携带） */
+        private const val KEY_THINKING = "thinking_enabled"
+        /** 联网搜索开关（随请求携带） */
+        private const val KEY_WEB_SEARCH = "web_search_enabled"
+        /** 上下文 Token 上限（模型设置项，默认 200K） */
+        private const val KEY_CONTEXT_TOKENS = "context_tokens"
+        /** 已保存的模型配置档案列表（JSON 数组，多套配置可选择） */
+        private const val KEY_PROFILES = "model_profiles"
+        /** 当前生效的档案 id（设置弹窗下次打开默认选中该档案；"" 表示未关联档案） */
+        private const val KEY_ACTIVE_PROFILE = "active_profile_id"
         /** 首次启动种子数据标记（默认对话只播种一次，删除后不复活） */
         private const val KEY_SEEDED = "seeded"
         /** assets 默认对话数据文件（首次启动展示用，见 ChatViewModel.SeedChatData） */
@@ -68,11 +81,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         /** 上下文消息窗口大小（条数上限） */
         const val MAX_CONTEXT_MSGS = 20
 
-        /**
-         * 上下文字符预算：按「正文 + 附件内容估算」从最新往前累计，超出即截断，
-         * 防止长历史/大附件撑爆模型上下文窗口（DeepSeek 64K token 量级）。
-         */
-        const val MAX_CONTEXT_CHARS = 24_000
+        /** 上下文 Token → 字符的估算系数（中英混排折中值，仅用于上下文裁剪的保守估算） */
+        const val CHARS_PER_TOKEN = 3
+
+        /** 输入上下文占 Token 上限的比例（其余留给模型输出与工具结果消耗） */
+        const val INPUT_BUDGET_RATIO = 0.75
+
+        /** 输入上下文预算下限（字符），防止配置过小把上下文裁空 */
+        const val MIN_CONTEXT_CHARS = 4_000
 
         /** 非图片附件的上下文成本估算（单文件文本最多约 8000 字符） */
         const val FILE_ATTACH_COST_CHARS = 8_000
@@ -168,10 +184,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Agent 模式开关（持久化）：
      * 开启后请求携带手机工具 schema，模型可调用「设备/存储/电量信息、蓝牙设备列表、
-     * 文件读写与搜索、闹钟/定时器、联系人查询、剪贴板、拨号、清缓存」等工具，
+     * 文件读写与搜索、闹钟/定时器、联系人查询、剪贴板、拨号、清缓存、二维码生成/识别」等工具，
      * 多轮循环执行后返回最终答复；需要权限的工具会弹窗向用户申请授权；关闭则普通聊天。
      */
     var agentEnabled: Boolean = false
+        private set
+
+    /** 已保存的模型配置档案（多套配置，设置弹窗内可选择应用 / 新增 / 删除） */
+    val modelProfiles = mutableListOf<ModelProfile>()
+
+    /** 当前生效的档案引用：设置弹窗下次打开默认选中它；"" 表示当前生效配置未关联档案 */
+    var activeProfileId: String = ""
         private set
 
     private val activeJobs = mutableListOf<Job>()
@@ -250,18 +273,115 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         AIConfig.baseUrl = prefs.getString(KEY_BASE_URL, AIConfig.baseUrl) ?: AIConfig.baseUrl
         AIConfig.apiKey = prefs.getString(KEY_API_KEY, AIConfig.apiKey) ?: AIConfig.apiKey
         AIConfig.model = prefs.getString(KEY_MODEL, AIConfig.model) ?: AIConfig.model
+        AIConfig.contextTokens = prefs.getInt(KEY_CONTEXT_TOKENS, AIConfig.DEFAULT_CONTEXT_TOKENS)
+        AIConfig.thinkingEnabled = prefs.getBoolean(KEY_THINKING, false)
+        AIConfig.webSearchEnabled = prefs.getBoolean(KEY_WEB_SEARCH, false)
+        activeProfileId = prefs.getString(KEY_ACTIVE_PROFILE, "").orEmpty()
+        modelProfiles.clear()
+        modelProfiles.addAll(loadProfilesFromPrefs())
     }
 
-    /** 保存配置并立即生效（下一次请求即用新 baseUrl/apiKey/model） */
-    fun saveAIConfig(baseUrl: String, apiKey: String, model: String) {
+    /**
+     * 保存配置并立即生效（下一次请求即用新 baseUrl/apiKey/model/上下文与开关），
+     * 并按名称（key）同步配置档案：
+     * - [profileName] 为空：仅保存为「当前生效配置」，清空档案引用；
+     * - 名称已存在：覆盖更新该档案（id 不变）；
+     * - 名称不存在：新增档案。
+     * @return 最终关联的档案（[profileName] 为空时返回 null）
+     */
+    fun saveAIConfig(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        contextTokens: Int,
+        thinking: Boolean,
+        webSearch: Boolean,
+        profileName: String = ""
+    ): ModelProfile? {
         AIConfig.baseUrl = baseUrl.trim().ifEmpty { AIConfig.baseUrl }
         AIConfig.apiKey = apiKey.trim()
         AIConfig.model = model.trim().ifEmpty { AIConfig.model }
+        AIConfig.contextTokens = contextTokens.coerceAtLeast(1_000)
+        AIConfig.thinkingEnabled = thinking
+        AIConfig.webSearchEnabled = webSearch
+        persistAIConfig()
+
+        val name = profileName.trim()
+        if (name.isEmpty()) {
+            setActiveProfile(null)
+            AppLog.i(AppLog.TAG_DB, "ai config saved (no profile): model=${AIConfig.model}, baseUrl=${AIConfig.baseUrl}, contextTokens=${AIConfig.contextTokens}")
+            return null
+        }
+        // 按名称（key）判断：同名覆盖已有档案（id 不变），新名称新增档案
+        val existing = modelProfiles.firstOrNull { it.name == name }
+        val updated = (existing ?: ModelProfile(id = UUID.randomUUID().toString(), name = name)).copy(
+            baseUrl = AIConfig.baseUrl,
+            apiKey = AIConfig.apiKey,
+            model = AIConfig.model,
+            contextTokens = AIConfig.contextTokens
+        )
+        val index = modelProfiles.indexOfFirst { it.id == updated.id }
+        if (index >= 0) {
+            modelProfiles[index] = updated
+        } else {
+            modelProfiles.add(updated)
+        }
+        persistProfiles()
+        setActiveProfile(updated.id)
+        AppLog.i(AppLog.TAG_DB, "ai config saved (profile=${updated.name}, ${if (existing == null) "new" else "updated"}): model=${AIConfig.model}, baseUrl=${AIConfig.baseUrl}, contextTokens=${AIConfig.contextTokens}")
+        return updated
+    }
+
+    /** 记录当前生效的档案引用（持久化；null/空 → 清空引用） */
+    private fun setActiveProfile(profileId: String?) {
+        activeProfileId = profileId.orEmpty()
+        prefs.edit().putString(KEY_ACTIVE_PROFILE, activeProfileId).apply()
+    }
+
+    private fun persistAIConfig() {
         prefs.edit()
             .putString(KEY_BASE_URL, AIConfig.baseUrl)
             .putString(KEY_API_KEY, AIConfig.apiKey)
             .putString(KEY_MODEL, AIConfig.model)
+            .putInt(KEY_CONTEXT_TOKENS, AIConfig.contextTokens)
+            .putBoolean(KEY_THINKING, AIConfig.thinkingEnabled)
+            .putBoolean(KEY_WEB_SEARCH, AIConfig.webSearchEnabled)
             .apply()
+    }
+
+    // ==================== 模型配置档案（新增 / 保存 / 选择，SP 持久化） ====================
+
+    /** 读取已保存的配置档案（JSON 解析失败返回空列表，不影响启动） */
+    private fun loadProfilesFromPrefs(): List<ModelProfile> {
+        val raw = prefs.getString(KEY_PROFILES, null) ?: return emptyList()
+        return try {
+            gson.fromJson(raw, Array<ModelProfile>::class.java)?.toList().orEmpty()
+        } catch (e: Exception) {
+            AppLog.w(AppLog.TAG_DB, "load model profiles failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** 应用配置档案为当前生效配置（连接参数持久化；思考 / 联网搜索开关保持当前值） */
+    fun applyProfile(profile: ModelProfile) {
+        AIConfig.baseUrl = profile.baseUrl.ifEmpty { AIConfig.baseUrl }
+        AIConfig.apiKey = profile.apiKey
+        AIConfig.model = profile.model.ifEmpty { AIConfig.model }
+        AIConfig.contextTokens = profile.contextTokens.coerceAtLeast(1_000)
+        persistAIConfig()
+        setActiveProfile(profile.id)
+        AppLog.i(AppLog.TAG_DB, "model profile applied: name=${profile.name}, model=${AIConfig.model}, baseUrl=${AIConfig.baseUrl}")
+    }
+
+    /** 删除配置档案（删除当前生效引用时清空引用；当前生效配置保持不变） */
+    fun deleteModelProfile(profile: ModelProfile) {
+        modelProfiles.remove(profile)
+        persistProfiles()
+        if (profile.id == activeProfileId) setActiveProfile(null)
+    }
+
+    private fun persistProfiles() {
+        prefs.edit().putString(KEY_PROFILES, gson.toJson(modelProfiles)).apply()
     }
 
     // ==================== 会话操作 ====================
@@ -370,7 +490,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty() && attachments.isEmpty()) return
 
         AppLog.i(AppLog.TAG_SEND, "send: textLen=${text.length}, attachments=${attachments.size}" +
-                "(${attachments.joinToString { it.fileName ?: "?" }}), agent=$agentEnabled, session=$currentSessionId")
+                "(${attachments.joinToString { it.fileName ?: "?" }}), agent=$agentEnabled, " +
+                "thinking=${AIConfig.thinkingEnabled}, webSearch=${AIConfig.webSearchEnabled}, session=$currentSessionId")
 
         val userMessage = AIChatMessage(
             sessionId = currentSessionId,
@@ -422,7 +543,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
         userItem?.let { callbacks?.onMessageStateChanged(it) }
 
-        // 上下文：只取成功消息；先按条数取最近 MAX_CONTEXT_MSGS 条，再按字符预算从最新往前裁剪
+        // 开关快照：整个回复（含 Agent 多轮工具循环）按发送时刻的开关执行，中途切换不影响本次
+        val thinking = AIConfig.thinkingEnabled
+        val webSearch = AIConfig.webSearchEnabled
+
+        // 上下文：只取成功消息；先按条数取最近 MAX_CONTEXT_MSGS 条，再按「Token 上下文大小」预算从最新往前裁剪
         val contextMessages = trimByCharBudget(
             messages
                 .map { it.message }
@@ -430,7 +555,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 .takeLast(MAX_CONTEXT_MSGS)
         )
         AppLog.d(AppLog.TAG_SEND, "sendToAI: userMsgId=$userMsgId, context=${contextMessages.size} 条" +
-                "(附件消息 ${contextMessages.count { it.attachments.isNotEmpty() }}, 预算 $MAX_CONTEXT_CHARS chars)")
+                "(附件消息 ${contextMessages.count { it.attachments.isNotEmpty() }}, " +
+                "预算 ${contextCharBudget()} chars, thinking=$thinking, webSearch=$webSearch)")
 
         // AI 占位（思考中）
         val aiMessage = AIChatMessage(
@@ -455,7 +581,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
         val job = vmScope.launch {
             try {
-                runReply(aiItem, aiMessage, userItem, contextMessages)
+                runReply(aiItem, aiMessage, userItem, contextMessages, thinking, webSearch)
             } catch (e: CancellationException) {
                 // 主动停止：保留已有内容，不视为失败
                 errorHandel(aiItem, aiMessage, userItem, sessionId, cancel = true, message = null)
@@ -477,14 +603,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         aiItem: ChatMessageItem,
         aiMessage: AIChatMessage,
         userItem: ChatMessageItem?,
-        initialContext: List<AIChatMessage>
+        initialContext: List<AIChatMessage>,
+        thinking: Boolean,
+        webSearch: Boolean
     ) {
         val sessionId = aiMessage.sessionId
         val replyStartNs = System.nanoTime()
-        AppLog.i(AppLog.TAG_STREAM, "runReply start: mode=${if (agentEnabled) "AGENT" else "CHAT"}, msgId=${aiMessage.id}")
+        AppLog.i(AppLog.TAG_STREAM, "runReply start: mode=${if (agentEnabled) "AGENT" else "CHAT"}, " +
+                "thinking=$thinking, webSearch=$webSearch, msgId=${aiMessage.id}")
         if (!agentEnabled) {
             // ===== 普通聊天 =====
-            aiService.sendMessageStream(initialContext).collect { event ->
+            aiService.sendMessageStream(initialContext, thinking, webSearch).collect { event ->
                 when (event) {
                     is AIStreamEvent.ThinkingChunk -> onThinking(aiItem, event.content)
                     is AIStreamEvent.Chunk -> onChunk(aiItem, aiMessage, event.content)
@@ -526,6 +655,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             buildAgentContext(initialContext)
         }
         val tools = ToolRegistry.buildToolsSchema()
+        // 同步「用户最近发送的图片」到工具会话状态（decode_qr_code 未指定 path 时兜底识别）
+        ToolSessionState.latestUserImagePaths = initialContext.asReversed()
+            .firstOrNull { it.isUser() && it.attachments.any { att -> att.isImage() } }
+            ?.attachments?.filter { it.isImage() }?.mapNotNull { it.localPath }
+            .orEmpty()
         var turn = 0
         while (turn < MAX_AGENT_TURNS) {
             turn++
@@ -535,7 +669,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             val pendingToolCalls = ArrayList<AgentToolCall>()
             // 本轮起始 content（用于下一轮 assistant 消息携带本轮已输出的文本）
             val turnStartContentLen = aiMessage.content.length
-            aiService.agentStream(agentContext, tools).collect { event ->
+            aiService.agentStream(agentContext, tools, thinking, webSearch).collect { event ->
                 when (event) {
                     is AIStreamEvent.ThinkingChunk -> onThinking(aiItem, event.content)
                     is AIStreamEvent.Chunk -> onChunk(aiItem, aiMessage, event.content)
@@ -590,7 +724,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     AgentStep.STATUS_DONE
                 }
-                step.summary = result.trim().take(160)
+                // 工具产出的内联图片（如二维码）：提取图片路径供聊天页内联展示 + 保存相册，摘要去掉标记行
+                step.imagePath = ToolImageProtocol.extract(result)
+                step.summary = ToolImageProtocol.stripMarker(result).trim().take(160)
                 callbacks?.onMessageStateChanged(aiItem)
                 AppLog.i(AppLog.TAG_TOOL, "tool done: ${toolCall.name}, status=${step.statusText()}, resultLen=${result.length}, ${AppLog.elapsedMs(toolStartNs)}")
 
@@ -611,13 +747,14 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun trimByCharBudget(messages: List<AIChatMessage>): List<AIChatMessage> {
         if (messages.isEmpty()) return messages
-        var budget = MAX_CONTEXT_CHARS
+        val budgetChars = contextCharBudget()
+        var budget = budgetChars
         val out = mutableListOf<AIChatMessage>()
         for (msg in messages.asReversed()) {
             val cost = msg.content.length +
                     msg.attachments.count { !it.isImage() } * FILE_ATTACH_COST_CHARS
             if (cost > budget && out.isNotEmpty()) {
-                AppLog.i(AppLog.TAG_BUILD, "context budget cut: keep latest ${out.size}/${messages.size} msgs (cost=$cost, left=$budget)")
+                AppLog.i(AppLog.TAG_BUILD, "context budget cut: keep latest ${out.size}/${messages.size} msgs (cost=$cost, left=$budget, budget=$budgetChars)")
                 break
             }
             // 单条超预算但列表为空时仍保留（至少要有一条触发消息）
@@ -625,6 +762,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             out.add(msg)
         }
         return out.asReversed()
+    }
+
+    /**
+     * 输入上下文预算（字符）= 模型设置「Token 上下文大小」× [INPUT_BUDGET_RATIO]（输出留白）
+     * × [CHARS_PER_TOKEN]（token→字符估算）。默认 200K token，配置调小可复现长历史裁剪行为。
+     */
+    private fun contextCharBudget(): Int {
+        val tokens = AIConfig.contextTokens.coerceAtLeast(1_000)
+        return (tokens * INPUT_BUDGET_RATIO * CHARS_PER_TOKEN).toInt().coerceAtLeast(MIN_CONTEXT_CHARS)
     }
 
     /** 构建 Agent 上下文（用户/助手成功消息 → AgentMessage）。
@@ -683,12 +829,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         val sessionId = currentSessionId
+        // 重新生成按当前开关执行（快照于本次重试发起时刻）
+        val thinking = AIConfig.thinkingEnabled
+        val webSearch = AIConfig.webSearchEnabled
         activeStreamCount++
         callbackInputUi()
 
         val job = vmScope.launch {
             try {
-                runReply(item, aiMessage, null, contextMessages)
+                runReply(item, aiMessage, null, contextMessages, thinking, webSearch)
             } catch (e: CancellationException) {
                 errorHandel(item, aiMessage, null, sessionId, cancel = true, message = null)
             } catch (e: Exception) {

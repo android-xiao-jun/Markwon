@@ -40,13 +40,22 @@ class DeepSeekAIService : IAIService {
 
     // ==================== 普通聊天 ====================
 
-    override fun sendMessageStream(messages: List<AIChatMessage>): Flow<AIStreamEvent> =
-        stream { OpenAIMessageBuilder.build(messages, AIConfig.model, tools = null) }
+    override fun sendMessageStream(
+        messages: List<AIChatMessage>,
+        thinking: Boolean,
+        webSearch: Boolean
+    ): Flow<AIStreamEvent> =
+        stream { OpenAIMessageBuilder.build(messages, AIConfig.model, tools = null, thinking = thinking, webSearch = webSearch) }
 
     // ==================== Agent 流式（工具调用） ====================
 
-    override fun agentStream(messages: List<AgentMessage>, tools: JSONArray?): Flow<AIStreamEvent> =
-        stream { OpenAIMessageBuilder.buildAgent(messages, AIConfig.model, tools) }
+    override fun agentStream(
+        messages: List<AgentMessage>,
+        tools: JSONArray?,
+        thinking: Boolean,
+        webSearch: Boolean
+    ): Flow<AIStreamEvent> =
+        stream { OpenAIMessageBuilder.buildAgent(messages, AIConfig.model, tools, thinking = thinking, webSearch = webSearch) }
 
     // ==================== 取消 ====================
 

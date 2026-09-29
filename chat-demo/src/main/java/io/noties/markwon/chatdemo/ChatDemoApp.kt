@@ -1,6 +1,7 @@
 package io.noties.markwon.chatdemo
 
 import androidx.multidex.MultiDexApplication
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import io.noties.markwon.block.view.ImageBlockView
 import io.noties.markwon.chatdemo.util.AppLog
 
@@ -20,6 +21,9 @@ class ChatDemoApp : MultiDexApplication() {
         // 行内图片）真正加载显示，而非占位块；默认 loader 支持 data-uri / http(s)，
         // HTTP 走本模块已有的 okhttp 栈。切换 Glide 时换成 markwon-image-glide 的 loader 即可。
         ImageBlockView.setDefaultAsyncDrawableLoader(ImageBlockView.defaultMarkwonLoader())
+        // 初始化 PDFBox 资源加载器：read_file 工具与消息附件的 PDF 文本提取依赖，
+        // 须在任何 PDDocument.load 之前调用（幂等，仅首次复制字体等资源）
+        PDFBoxResourceLoader.init(applicationContext)
         AppLog.i(AppLog.TAG_INIT, "ChatDemoApp onCreate, versionName=${BuildConfig.VERSION_NAME}")
     }
 }

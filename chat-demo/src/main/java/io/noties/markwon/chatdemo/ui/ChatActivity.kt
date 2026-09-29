@@ -1,9 +1,11 @@
 package io.noties.markwon.chatdemo.ui
 
+import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.Editable
@@ -11,12 +13,16 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
@@ -28,9 +34,11 @@ import io.noties.markwon.chatdemo.R
 import io.noties.markwon.chatdemo.bean.Attachment
 import io.noties.markwon.chatdemo.bean.SessionSummary
 import io.noties.markwon.chatdemo.service.AIConfig
+import io.noties.markwon.chatdemo.service.ModelProfile
 import io.noties.markwon.chatdemo.tool.ToolPermissionManager
 import io.noties.markwon.chatdemo.util.AppLog
 import io.noties.markwon.chatdemo.util.FileHelper
+import io.noties.markwon.chatdemo.util.GallerySaver
 import io.noties.markwon.chatdemo.viewmodel.ChatMessageItem
 import io.noties.markwon.chatdemo.viewmodel.ChatViewModel
 import kotlinx.coroutines.CancellableContinuation
@@ -46,7 +54,8 @@ import kotlin.coroutines.resume
  * - 中部：消息列表（用户右蓝泡 / AI 左白泡 + Markdown 流式渲染）
  * - 左侧：DrawerLayout 滑出历史会话列表（新建对话 / 删除会话 / 切换会话）
  * - 底部：图片/文件附件 + 输入框 + 发送/停止
- * - 右上角：设置弹窗（baseUrl / apiKey / model，模型可切换，保存即生效）
+ * - 右上角：模型配置弹窗（配置档案按名称保存/覆盖/选择/删除 + baseUrl / apiKey / model /
+ *   Token 上下文大小 + 思考/联网搜索开关 + 日志级别，全部 SP 持久化，保存即生效）
  *
  * 同时实现 [ToolPermissionManager.Delegate]：Agent 工具需要运行时权限时，
  * 弹窗向用户说明用途 → 拉起系统授权 →（永久拒绝时）引导系统设置并复查。
@@ -59,6 +68,9 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
 
         /** 「去系统设置」请求码 */
         private const val REQ_OPEN_SETTINGS = 2999
+
+        /** 保存工具图片到相册的存储权限请求码（避开工具权限码区间） */
+        private const val REQ_SAVE_GALLERY = 1999
     }
 
     private val viewModel: ChatViewModel by lazy {
@@ -101,6 +113,9 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
     private var settingsWaiter: CancellableContinuation<Boolean>? = null
     private var settingsPermission: String? = null
 
+    /** 待保存到相册的图片路径（Android 9- 存储权限授权后继续保存） */
+    private var pendingGallerySavePath: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat)
@@ -122,7 +137,7 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
         llAttachmentPreview = findViewById(R.id.ll_attachment_preview)
         llAttachments = findViewById(R.id.ll_attachments)
 
-        chatAdapter = ChatAdapter(viewModel)
+        chatAdapter = ChatAdapter(viewModel) { path -> saveImageToGallery(path) }
         rvMessages.layoutManager = LinearLayoutManager(this)
         rvMessages.adapter = chatAdapter
         // notifyItemChanged 重绘去掉交叉渐变动画，流式期间避免整条消息闪烁
@@ -155,7 +170,6 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
         tvPillAgent.setOnClickListener {
             if (!viewModel.agentEnabled && !viewModel.isStreaming) viewModel.toggleAgent()
         }
-
         // 附件入口：选择 图片 / 文件
         btnAdd.setOnClickListener { showAttachmentPicker() }
         btnSend.setOnClickListener { doSend() }
@@ -270,6 +284,19 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
+        // 保存相册的存储权限回调（与工具权限请求码区间区分）
+        if (requestCode == REQ_SAVE_GALLERY) {
+            val path = pendingGallerySavePath
+            pendingGallerySavePath = null
+            val granted = grantResults.isNotEmpty() &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted && path != null) {
+                doSaveImageToGallery(path)
+            } else {
+                Toast.makeText(this, "未获得存储权限，无法保存到相册", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val cont = permissionWaiters.remove(requestCode)
         if (cont == null) {
             super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -324,27 +351,127 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
         }
     }
 
+    // ==================== 工具图片保存相册（如生成的二维码） ====================
+
+    /**
+     * 保存工具生成的图片到系统相册：
+     * Android 10+ 走 MediaStore 无需权限；Android 9 及以下先申请存储写入权限，授权后继续保存。
+     */
+    private fun saveImageToGallery(path: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingGallerySavePath = path
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_SAVE_GALLERY
+            )
+            return
+        }
+        doSaveImageToGallery(path)
+    }
+
+    /** 实际保存（IO 线程写入相册，主线程提示结果） */
+    private fun doSaveImageToGallery(path: String) {
+        Thread {
+            val saved = GallerySaver.saveToGallery(applicationContext, path)
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    if (saved != null) "已保存到相册：$saved" else "保存失败，请确认图片存在且存储空间充足",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }.start()
+    }
+
     // ==================== 模型配置弹窗 ====================
 
     private fun showConfigDialog() {
         val content = LayoutInflater.from(this).inflate(R.layout.dialog_model_config, null)
+        val spinnerProfiles = content.findViewById<Spinner>(R.id.spinner_profiles)
+        val etProfileName = content.findViewById<EditText>(R.id.et_profile_name)
         val etBaseUrl = content.findViewById<EditText>(R.id.et_base_url)
         val etApiKey = content.findViewById<EditText>(R.id.et_api_key)
         val etModel = content.findViewById<EditText>(R.id.et_model)
-        val spinnerLogLevel = content.findViewById<android.widget.Spinner>(R.id.spinner_log_level)
+        val etContextTokens = content.findViewById<EditText>(R.id.et_context_tokens)
+        val switchThinking = content.findViewById<SwitchCompat>(R.id.switch_thinking)
+        val switchWebSearch = content.findViewById<SwitchCompat>(R.id.switch_web_search)
+        val btnDeleteProfile = content.findViewById<TextView>(R.id.btn_delete_profile)
+        val spinnerLogLevel = content.findViewById<Spinner>(R.id.spinner_log_level)
+
+        // 回填当前生效配置（连接参数 + 上下文 + 开关）
         etBaseUrl.setText(AIConfig.baseUrl)
         etApiKey.setText(AIConfig.apiKey)
         etModel.setText(AIConfig.model)
+        etContextTokens.setText(AIConfig.contextTokens.toString())
+        switchThinking.isChecked = AIConfig.thinkingEnabled
+        switchWebSearch.isChecked = AIConfig.webSearchEnabled
+
+        // ===== 已保存配置档案（SP 持久化）：下拉选择，第 0 项为「当前生效配置」哨兵 =====
+        val profileLabels = mutableListOf<String>()
+        val profileAdapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, profileLabels
+        )
+        spinnerProfiles.adapter = profileAdapter
+        var selectedProfile: ModelProfile? = null
+
+        fun fillFields(baseUrl: String, apiKey: String, model: String, tokens: Int) {
+            etBaseUrl.setText(baseUrl)
+            etApiKey.setText(apiKey)
+            etModel.setText(model)
+            etContextTokens.setText(tokens.toString())
+        }
+
+        /** 重建下拉项并把选中定位到 [selected]（null → 当前生效配置） */
+        fun rebuildProfiles(selected: ModelProfile?) {
+            selectedProfile = selected
+            profileLabels.clear()
+            profileLabels.add("当前生效配置（未保存）")
+            viewModel.modelProfiles.forEach { profileLabels.add(it.name) }
+            profileAdapter.notifyDataSetChanged()
+            val index = if (selected == null) 0 else
+                viewModel.modelProfiles.indexOfFirst { it.id == selected.id } + 1
+            spinnerProfiles.setSelection(index.coerceAtLeast(0))
+        }
+
+        spinnerProfiles.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val profile = if (position <= 0) null else viewModel.modelProfiles.getOrNull(position - 1)
+                selectedProfile = profile ?: return
+                // 选择已保存档案：立即应用连接参数并回填编辑框；思考/联网搜索开关不受档案影响
+                viewModel.applyProfile(profile)
+                fillFields(profile.baseUrl, profile.apiKey, profile.model, profile.contextTokens)
+                etProfileName.setText(profile.name)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        // 默认选中「上一次生效的配置档案」（打开即定位到上次保存/应用的档案；无引用则定位到「当前生效配置」）
+        rebuildProfiles(viewModel.modelProfiles.firstOrNull { it.id == viewModel.activeProfileId })
+
+        // 删除配置：删除下拉中选中的已保存档案（当前生效配置保持不变）
+        btnDeleteProfile.setOnClickListener {
+            val profile = selectedProfile
+            if (profile == null) {
+                Toast.makeText(this, "请先在上方选择要删除的已保存配置", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            viewModel.deleteModelProfile(profile)
+            rebuildProfiles(null)
+            etProfileName.setText("")
+            Toast.makeText(this, "已删除配置「${profile.name}」，当前生效配置不变", Toast.LENGTH_SHORT).show()
+        }
 
         // 日志级别 Spinner：即时生效并持久化
         val levels = AppLog.Level.values()
-        spinnerLogLevel.adapter = android.widget.ArrayAdapter(
+        spinnerLogLevel.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item, levels.toList()
         )
         spinnerLogLevel.setSelection(levels.indexOf(AppLog.minLevel))
-        spinnerLogLevel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        spinnerLogLevel.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
-                parent: android.widget.AdapterView<*>?,
+                parent: AdapterView<*>?,
                 view: View?,
                 position: Int,
                 id: Long
@@ -352,7 +479,7 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
                 AppLog.setLevel(this@ChatActivity, levels[position])
             }
 
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         AlertDialog.Builder(this)
@@ -360,15 +487,26 @@ class ChatActivity : AppCompatActivity(), ChatViewModel.Callbacks, ToolPermissio
             .setView(content)
             .setNegativeButton("取消", null)
             .setPositiveButton("保存") { _, _ ->
-                viewModel.saveAIConfig(
+                // 配置名即 key：同名覆盖已有档案、新名称新增档案、留空则仅保存为当前生效配置
+                val updated = viewModel.saveAIConfig(
                     etBaseUrl.text.toString(),
                     etApiKey.text.toString(),
-                    etModel.text.toString()
+                    etModel.text.toString(),
+                    parseContextTokens(etContextTokens.text.toString()),
+                    switchThinking.isChecked,
+                    switchWebSearch.isChecked,
+                    etProfileName.text.toString()
                 )
+                // 有档案时刷新下拉并保持选中（新增或覆盖后的档案即当前生效配置，本地引用同步变更）
+                if (updated != null) rebuildProfiles(updated)
                 Toast.makeText(this, "已保存，下次请求生效", Toast.LENGTH_SHORT).show()
             }
             .show()
     }
+
+    /** 解析 Token 上下文输入：空/非法回退默认 200K，下限 1000（与 ViewModel 侧约束一致） */
+    private fun parseContextTokens(raw: String): Int =
+        raw.trim().toIntOrNull()?.coerceAtLeast(1_000) ?: AIConfig.DEFAULT_CONTEXT_TOKENS
 
     // ==================== onActivityResult（附件选择 / 权限设置页返回） ====================
 

@@ -16,11 +16,13 @@ Agent 模式界面（思考 → 工具 → 回复 交替展示 / 工具清单）
 
 ## 1. 功能一览
 
-- 聊天 / Agent 双模式胶囊切换；右上角配置弹窗可切**模型 / baseUrl / 日志级别**（保存即生效）；
+- 聊天 / Agent 双模式胶囊切换；右上角模型配置弹窗可切**模型 / baseUrl / 日志级别**（保存即生效）；
+- 弹窗内另含：**多套配置档案**新增 / 保存 / 选择 / 删除（SP 持久化）、**Token 上下文大小（默认 200K**，
+  动态换算上下文裁剪预算）、**思考 / 联网搜索**开关（随请求携带，SP 持久化）；
 - AI 回复 Markdown 分块渲染：文本 / 代码 / 图片 / 分隔线各拆独立 View，流式 chunk 逐段淡入 + 光标打字机；
 - 思考过程 + 工具调用按 `ChatTrailSegment` **有序交替**展示（多次 Agent 调用渲染多段思考，工具卡片原位更新）；
 - DrawerLayout 侧滑会话历史：新建 / 切换 / 删除（二次确认），Room 持久化，**只存文件地址不存内容**；
-- 附件：文本类（txt/md/json/kt/java 等 24 种白名单）读内容入参；二进制 / PDF 传占位说明；图片按模型选 Base64 多模态或占位；
+- 附件分格式解析（`FileTextExtractor`，消息附件与 `read_file` 工具共用）：文本/代码直读（非法编码回退 GB18030）；PDF 提取文本层（PDFBox，前 20 页）；Word/Excel/PPT（docx/xlsx/pptx）解析出文本与表格；zip/jar/apk/epub 给出条目清单与内嵌小型文本；旧版 doc/xls/ppt 等二进制传占位说明；图片按模型选 Base64 多模态或占位；
 - Agent 工具链：读/写/搜索文件、剪贴板、设备/存储/内存/电池/屏幕、联系人、蓝牙、闹钟/定时器、拨号、清缓存等，敏感工具 `ToolPermissionManager` 弹窗授权；
 - 发送失败左红感叹号，AI 消息支持复制 / 重新生成。
 
@@ -48,7 +50,17 @@ ai.model   = deepseek-v4-flash
 
 ### 2.2 方式二：App 内设置弹窗（运行时切换，免改配置重编）
 
-聊天页**右上角齿轮**打开设置弹窗：baseUrl / apiKey / model 三个输入框，连同日志级别；
+聊天页**右上角齿轮**打开设置弹窗：
+
+- **配置档案**：名称框填好配置名后点「保存」即建档——名称即 key，**同名覆盖更新、新名称新增**
+  （无需单独的新增按钮）；名称留空则只更新当前生效配置。下拉选择已保存档案立即应用（可删除）；
+  下次打开弹窗**默认选中上次生效的档案**，点「保存」会把编辑内容**回写该档案**（本地引用同步变更），
+  后续发消息即用新配置；
+- baseUrl / apiKey / model / **Token 上下文大小**（默认 200K，用于估算上下文裁剪预算）；
+- **思考 / 联网搜索**开关：思考走官方网关 `thinking:{type:enabled}`、
+  兼容网关 `enable_thinking`；联网搜索走兼容网关 `enable_search + web_search_options`
+  （官方网关忽略该字段不报错）；另含日志级别。
+
 保存即生效，运行时**优先用面板里的值**覆盖 `BuildConfig`（适合切换模型对比效果；切换成支持视觉的网关后，
 图片附件会自动走 Base64 多模态，DeepSeek 官方网关则降级为文本占位说明）。
 
@@ -164,8 +176,9 @@ ChatViewModel → DeepSeekAIService(构造请求体@IO线程) → OkHttpStreamCl
               → SSEStreamParser(按事件分割) → 回调 onDelta/onThinking/onTool/onDone
 ```
 
-- 请求体构造（含附件 Base64 / 文件读取）一律 `withContext(Dispatchers.IO)`，避免主线程卡顿；
+- 请求体构造（含附件 Base64 / 文件解析）一律 `withContext(Dispatchers.IO)`，避免主线程卡顿；
 - 图片 + DeepSeek 官方网关 → 文本占位说明（官方不支持 image_url）；兼容网关 → Base64 多模态；
+- 非图片附件统一走 `FileTextExtractor` 分格式解析（文本直读 / PDF / docx·xlsx·pptx / 压缩包），不可解析时返回明确的占位说明；
 - 流式正文 chunk 走 4.3 的 `appendMarkdown`，思考 / 工具 call 走 `ChatTrailSegment`。
 
 ### 4.6 Room 本地持久化
@@ -223,5 +236,5 @@ chat-demo/src/main/java/io/noties/markwon/chatdemo/
 3. `./gradlew :chat-demo:assembleDebug` → `adb install -r chat-demo/build/outputs/apk/debug/chat-demo-debug.apk`
    （本地构建产物，Git 不跟踪 `build/`）；
 4. 验证点：SSE 打字机与思考/工具交替顺序；历史会话重进（整段 `renderMarkdown` 回放）；
-   发送 .txt/.md 附件、DeepSeek 官方模型发图片（占位说明）、切换视觉网关发图片（Base64）；
+   发送 .txt/.md 附件、PDF/docx/xlsx/zip 附件（解析出内容或清单）、DeepSeek 官方模型发图片（占位说明）、切换视觉网关发图片（Base64）；
    Agent 触发敏感工具看授权弹窗；发送失败红叹号与复制/重新生成。

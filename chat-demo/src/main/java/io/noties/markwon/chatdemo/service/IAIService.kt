@@ -8,6 +8,9 @@ import org.json.JSONArray
 /** 模型运行时可切换配置。 */
 object AIConfig {
 
+    /** 上下文 Token 上限默认值（200K，可在模型设置中调整） */
+    const val DEFAULT_CONTEXT_TOKENS = 200_000
+
     /** OpenAI 兼容接口 baseUrl（默认取 BuildConfig，可被 local.properties 的 ai.baseUrl 覆盖） */
     var baseUrl: String = BuildConfig.AI_BASE_URL
 
@@ -16,7 +19,30 @@ object AIConfig {
 
     /** 当前模型名（默认取 BuildConfig，可被 local.properties 的 ai.model 覆盖） */
     var model: String = BuildConfig.AI_MODEL
+
+    /** 思考开关：随请求发送（官方网关 thinking / 兼容网关 enable_thinking），失焦收敛后不再携带 */
+    var thinkingEnabled: Boolean = false
+
+    /** 联网搜索开关：开启时随请求发送 enable_search + web_search_options */
+    var webSearchEnabled: Boolean = false
+
+    /** 上下文 Token 上限（模型设置项，默认 200K；用于估算输入上下文预算，不随请求发送） */
+    var contextTokens: Int = DEFAULT_CONTEXT_TOKENS
 }
+
+/**
+ * 模型配置档案（可在设置弹窗中新增 / 保存 / 切换，多套并存于 SP）
+ *
+ * [id] 为空表示「当前生效配置」这条隐式档案（尚未起名保存时的编辑态）。
+ */
+data class ModelProfile(
+    val id: String = "",
+    val name: String = "",
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val model: String = "",
+    val contextTokens: Int = AIConfig.DEFAULT_CONTEXT_TOKENS
+)
 
 /**
  * Agent 上下文消息（OpenAI 协议消息的最小模型）
@@ -58,8 +84,16 @@ data class ToolResultMsg(
  */
 interface IAIService {
 
-    /** 普通流式聊天 */
-    fun sendMessageStream(messages: List<AIChatMessage>): Flow<AIStreamEvent>
+    /**
+     * 普通流式聊天
+     * @param thinking  思考开关（随请求携带）
+     * @param webSearch 联网搜索开关（随请求携带）
+     */
+    fun sendMessageStream(
+        messages: List<AIChatMessage>,
+        thinking: Boolean = false,
+        webSearch: Boolean = false
+    ): Flow<AIStreamEvent>
 
     /**
      * Agent 流式请求：携带 tools schema，返回的流可能包含
@@ -68,8 +102,15 @@ interface IAIService {
      *
      * @param messages Agent 多轮上下文（[AgentMessage] 列表）
      * @param tools    待注册给模型的工具 schema（JSONArray 或 null 关闭）
+     * @param thinking  思考开关（随请求携带）
+     * @param webSearch 联网搜索开关（随请求携带）
      */
-    fun agentStream(messages: List<AgentMessage>, tools: JSONArray?): Flow<AIStreamEvent>
+    fun agentStream(
+        messages: List<AgentMessage>,
+        tools: JSONArray?,
+        thinking: Boolean = false,
+        webSearch: Boolean = false
+    ): Flow<AIStreamEvent>
 
     /** 取消当前请求 */
     fun cancelRequest()
